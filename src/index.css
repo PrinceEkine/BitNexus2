@@ -1,0 +1,63 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=JetBrains+Mono:wght@400;500&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Playfair Display", serif;
+  --font-mono: "JetBrains Mono", monospace;
+  
+  --color-brand-dark: #0A0A0A;
+  --color-brand-accent: #D4AF37; /* Gold accent for luxury feel */
+  --color-brand-muted: #F5F5F4;
+  --color-brand-ink: #1C1917;
+}
+
+@layer base {
+  body {
+    @apply bg-white text-brand-ink antialiased selection:bg-brand-accent selection:text-white;
+  }
+  
+  h1, h2, h3, h4, h5, h6 {
+    @apply tracking-tight;
+  }
+}
+
+@layer components {
+  .btn-primary {
+    @apply bg-brand-dark text-white px-8 py-4 rounded-none hover:bg-brand-accent transition-all duration-500 uppercase tracking-[0.2em] text-[10px] font-bold flex items-center justify-center gap-2;
+  }
+
+  .btn-outline {
+    @apply border border-brand-dark text-brand-dark px-8 py-4 rounded-none hover:bg-brand-dark hover:text-white transition-all duration-500 uppercase tracking-[0.2em] text-[10px] font-bold flex items-center justify-center gap-2;
+  }
+
+  .glass {
+    @apply bg-white/70 backdrop-blur-xl border border-white/20;
+  }
+
+  .data-label {
+    @apply text-[9px] uppercase tracking-[0.3em] font-bold text-stone-400;
+  }
+
+  .data-value {
+    @apply font-mono text-sm tracking-tighter;
+  }
+
+  .tech-border {
+    @apply border border-stone-200 relative;
+  }
+
+  .tech-border::after {
+    content: '';
+    @apply absolute top-0 left-0 w-1 h-full bg-brand-accent opacity-0 transition-opacity duration-500;
+  }
+
+  .tech-border:hover::after {
+    @apply opacity-100;
+  }
+
+  .status-glow {
+    @apply w-2 h-2 rounded-full shadow-[0_0_10px_rgba(212,175,55,0.5)];
+  }
+}
+

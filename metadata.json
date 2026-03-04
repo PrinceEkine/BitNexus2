@@ -1,0 +1,9 @@
+{
+  "name": "BitNexus",
+  "description": "A premium Service Management Platform for professional home care on-demand, featuring customer booking, technician management, and operational dashboards.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone",
+    "geolocation"
+  ]
+}
