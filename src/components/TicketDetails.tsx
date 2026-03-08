@@ -1,25 +1,48 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { motion } from 'motion/react';
-import { ChevronLeft, User, MapPin, Calendar, Clock, AlertCircle, Video, CheckCircle, MessageSquare, Paperclip, MoreHorizontal } from 'lucide-react';
+import { ChevronLeft, User, MapPin, Calendar, Clock, AlertCircle, Video, CheckCircle, MessageSquare, Paperclip, MoreHorizontal, Zap } from 'lucide-react';
 import { cn, formatCurrency } from '../lib/utils';
+import { useRealtime } from '../contexts/RealtimeContext';
 
-const TicketDetails = ({ onBack }: { onBack: () => void }) => {
-  const ticket = {
-    id: 'BN-8821',
-    customer: 'Sarah Jenkins',
-    service: 'Electrical Repair',
-    status: 'Pending',
-    priority: 'Emergency',
-    date: 'Oct 24, 2023',
-    time: '14:30',
-    address: '12B Admiralty Way, Lekki Phase 1, Lagos',
-    description: 'The main circuit breaker keeps tripping whenever the AC is turned on. Possible short circuit in the living room wiring.',
-    isLiveVideo: true,
-    media: [
-      'https://images.unsplash.com/photo-1558403194-611308249627?auto=format&fit=crop&q=80&w=400',
-      'https://images.unsplash.com/photo-1621905251189-08b45d6a269e?auto=format&fit=crop&q=80&w=400'
-    ]
+const TicketDetails = ({ ticketId, onBack }: { ticketId: string, onBack: () => void }) => {
+  const { tickets, technicians, updateTicket } = useRealtime();
+  const ticket = tickets.find(t => t.id === ticketId);
+  const [selectedTechId, setSelectedTechId] = useState(ticket?.technician_id || '');
+
+  if (!ticket) return null;
+
+  const handleAssign = async () => {
+    if (!selectedTechId) return;
+    const tech = technicians.find(t => t.id === selectedTechId);
+    await updateTicket(ticket.id, { 
+      technician_id: selectedTechId, 
+      technician_name: tech?.name,
+      status: 'Assigned' 
+    });
+    alert('Technician assigned successfully.');
   };
+
+  const handleAIAutoAssign = async () => {
+    // Basic AI logic: Find idle technician with matching specialty
+    const bestTech = technicians.find(t => 
+      t.status === 'Idle' && 
+      t.specialty.toLowerCase().includes(ticket.service.toLowerCase())
+    ) || technicians.find(t => t.status === 'Idle');
+
+    if (bestTech) {
+      setSelectedTechId(bestTech.id);
+      await updateTicket(ticket.id, { 
+        technician_id: bestTech.id, 
+        technician_name: bestTech.name,
+        status: 'Assigned' 
+      });
+      alert(`AI has assigned ${bestTech.name} to this ticket.`);
+    } else {
+      alert('AI could not find an available technician. Please assign manually.');
+    }
+  };
+
+  const assignedTech = technicians.find(t => t.id === ticket.technician_id);
 
   return (
     <div className="space-y-8">
@@ -40,7 +63,10 @@ const TicketDetails = ({ onBack }: { onBack: () => void }) => {
                 <h2 className="text-4xl font-display">{ticket.service}</h2>
               </div>
               <div className="flex flex-col items-end gap-2">
-                <span className="bg-red-100 text-red-600 text-[8px] px-3 py-1 font-bold uppercase tracking-widest rounded-full">
+                <span className={cn(
+                  "text-[8px] px-3 py-1 font-bold uppercase tracking-widest rounded-full",
+                  ticket.priority === 'Emergency' ? 'bg-red-100 text-red-600' : 'bg-blue-100 text-blue-600'
+                )}>
                   {ticket.priority}
                 </span>
                 <span className="text-[10px] text-gray-400 uppercase tracking-widest font-bold">{ticket.status}</span>
@@ -53,14 +79,14 @@ const TicketDetails = ({ onBack }: { onBack: () => void }) => {
                   <User className="w-5 h-5 text-gray-300" />
                   <div>
                     <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mb-1">Customer</p>
-                    <p className="text-sm font-bold uppercase tracking-widest">{ticket.customer}</p>
+                    <p className="text-sm font-bold uppercase tracking-widest">{ticket.customer_name}</p>
                   </div>
                 </div>
                 <div className="flex items-start gap-4">
                   <MapPin className="w-5 h-5 text-gray-300" />
                   <div>
                     <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mb-1">Location</p>
-                    <p className="text-sm font-light leading-relaxed">{ticket.address}</p>
+                    <p className="text-sm font-light leading-relaxed">Lagos, Nigeria</p>
                   </div>
                 </div>
               </div>
@@ -69,32 +95,15 @@ const TicketDetails = ({ onBack }: { onBack: () => void }) => {
                   <Calendar className="w-5 h-5 text-gray-300" />
                   <div>
                     <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mb-1">Preferred Schedule</p>
-                    <p className="text-sm font-bold uppercase tracking-widest">{ticket.date} at {ticket.time}</p>
+                    <p className="text-sm font-bold uppercase tracking-widest">{new Date(ticket.date).toLocaleDateString()} at {new Date(ticket.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
                   </div>
                 </div>
-                {ticket.isLiveVideo && (
-                  <div className="flex items-center gap-4 text-brand-accent">
-                    <Video className="w-5 h-5" />
-                    <span className="text-[10px] font-bold uppercase tracking-widest">Live Video Requested</span>
-                  </div>
-                )}
               </div>
             </div>
 
             <div className="space-y-4 pt-10 border-t border-gray-50">
               <h4 className="text-[10px] uppercase tracking-widest font-bold text-gray-400">Issue Description</h4>
               <p className="text-sm font-light leading-relaxed text-gray-600">{ticket.description}</p>
-            </div>
-
-            <div className="mt-10 space-y-4">
-              <h4 className="text-[10px] uppercase tracking-widest font-bold text-gray-400">Attached Media</h4>
-              <div className="flex gap-4">
-                {ticket.media.map((url, i) => (
-                  <div key={i} className="w-32 h-32 bg-gray-100 overflow-hidden cursor-pointer hover:opacity-80 transition-opacity">
-                    <img src={url} alt="Media" className="w-full h-full object-cover grayscale hover:grayscale-0 transition-all" referrerPolicy="no-referrer" />
-                  </div>
-                ))}
-              </div>
             </div>
           </section>
 
@@ -105,25 +114,19 @@ const TicketDetails = ({ onBack }: { onBack: () => void }) => {
               <div className="flex gap-4">
                 <div className="w-8 h-8 rounded-full bg-brand-accent flex items-center justify-center text-[10px] font-bold text-white">AD</div>
                 <div className="flex-1 bg-gray-50 p-6">
-                  <p className="text-xs font-light leading-relaxed text-gray-600">Ticket created by customer. System flagged as emergency due to circuit breaker issue.</p>
+                  <p className="text-xs font-light leading-relaxed text-gray-600">Ticket created by customer. System flagged as {ticket.priority.toLowerCase()} due to issue description.</p>
                   <p className="text-[8px] text-gray-400 mt-2 uppercase tracking-widest">Today, 10:15 AM</p>
                 </div>
               </div>
-              <div className="flex gap-4">
-                <div className="w-8 h-8 rounded-full bg-gray-200" />
-                <div className="flex-1">
-                  <textarea 
-                    className="w-full border border-gray-100 p-4 text-xs font-light outline-none focus:border-brand-dark resize-none h-24"
-                    placeholder="Add an internal note..."
-                  />
-                  <div className="flex justify-between items-center mt-4">
-                    <button className="text-[10px] font-bold uppercase tracking-widest text-gray-400 flex items-center gap-2">
-                      <Paperclip className="w-3 h-3" /> Attach File
-                    </button>
-                    <button className="btn-primary py-2 px-6 text-[10px]">Post Note</button>
+              {assignedTech && (
+                <div className="flex gap-4">
+                  <div className="w-8 h-8 rounded-full bg-emerald-500 flex items-center justify-center text-[10px] font-bold text-white">ST</div>
+                  <div className="flex-1 bg-emerald-50 p-6">
+                    <p className="text-xs font-light leading-relaxed text-emerald-700">Technician {assignedTech.name} has been assigned to this ticket.</p>
+                    <p className="text-[8px] text-emerald-400 mt-2 uppercase tracking-widest">Just now</p>
                   </div>
                 </div>
-              </div>
+              )}
             </div>
           </section>
         </div>
@@ -135,13 +138,32 @@ const TicketDetails = ({ onBack }: { onBack: () => void }) => {
             <div className="space-y-6">
               <div>
                 <label className="block text-[8px] uppercase tracking-widest font-bold text-white/30 mb-4">Assign Technician</label>
-                <select className="w-full bg-white/5 border border-white/10 p-3 text-xs font-bold uppercase tracking-widest outline-none focus:border-white/30">
-                  <option className="bg-brand-dark">Select Technician</option>
-                  <option className="bg-brand-dark">John Doe (Electrical)</option>
-                  <option className="bg-brand-dark">Jane Smith (Plumbing)</option>
+                <select 
+                  value={selectedTechId}
+                  onChange={(e) => setSelectedTechId(e.target.value)}
+                  className="w-full bg-white/5 border border-white/10 p-3 text-xs font-bold uppercase tracking-widest outline-none focus:border-white/30"
+                >
+                  <option value="" className="bg-brand-dark">Select Technician</option>
+                  {technicians.map(tech => (
+                    <option key={tech.id} value={tech.id} className="bg-brand-dark">
+                      {tech.name} ({tech.specialty})
+                    </option>
+                  ))}
                 </select>
               </div>
-              <button className="btn-primary w-full bg-white text-brand-dark hover:bg-white/90">Confirm Assignment</button>
+              <button 
+                onClick={handleAssign}
+                disabled={!selectedTechId || ticket.technician_id === selectedTechId}
+                className="btn-primary w-full bg-white text-brand-dark hover:bg-white/90 disabled:opacity-30"
+              >
+                {ticket.technician_id ? 'Update Assignment' : 'Confirm Assignment'}
+              </button>
+              <button 
+                onClick={handleAIAutoAssign}
+                className="w-full py-3 border border-brand-accent/30 text-brand-accent text-[10px] font-bold uppercase tracking-widest hover:bg-brand-accent hover:text-white transition-all flex items-center justify-center gap-2"
+              >
+                <Zap className="w-3 h-3" /> AI Auto-Assign
+              </button>
             </div>
           </section>
 

@@ -1,8 +1,11 @@
 import React from 'react';
 import { motion } from 'motion/react';
 import { ArrowRight, Shield, Clock, Zap, Star, ChevronRight } from 'lucide-react';
+import { useCurrency } from '../contexts/CurrencyContext';
+import { formatCurrency } from '../lib/utils';
 
 const LandingPage = ({ onBookNow }: { onBookNow: () => void }) => {
+  const { currency, convert } = useCurrency();
   return (
     <div className="min-h-screen">
       {/* Hero Section - Editorial Style */}
@@ -23,13 +26,13 @@ const LandingPage = ({ onBookNow }: { onBookNow: () => void }) => {
             animate={{ opacity: 1, x: 0 }}
             transition={{ duration: 1, ease: [0.16, 1, 0.3, 1] }}
           >
-            <p className="data-label text-brand-accent mb-6">Home Management Redefined</p>
+            <p className="data-label text-brand-accent mb-6">The Ultimate Home Super App</p>
             <h1 className="text-[12vw] md:text-[8vw] font-display text-white leading-[0.85] mb-8 italic">
-              Crafted <br />
-              <span className="not-italic">Care.</span>
+              One Hub. <br />
+              <span className="not-italic">Total Control.</span>
             </h1>
             <p className="text-white/50 text-lg md:text-xl mb-12 font-light tracking-wide max-w-xl leading-relaxed">
-              At the nexus of service and technology, BitNexus empowers you to manage your home with precision, ease, and absolute discretion.
+              At the nexus of service and technology, BitNexus is your unified ecosystem for home management, payments, inventory tracking, and instant WhatsApp support.
             </p>
             <div className="flex flex-col sm:flex-row gap-6">
               <button 
@@ -98,7 +101,7 @@ const LandingPage = ({ onBookNow }: { onBookNow: () => void }) => {
                 </div>
                 <h4 className="text-2xl font-display mb-3 italic">{service.title}</h4>
                 <p className="text-sm text-stone-500 font-light leading-relaxed mb-4">{service.desc}</p>
-                <p className="data-label text-brand-accent">From ₦25,000</p>
+                <p className="data-label text-brand-accent">From {formatCurrency(convert(25000, 'NGN', currency), currency)}</p>
               </motion.div>
             ))}
           </div>
@@ -148,13 +151,13 @@ const LandingPage = ({ onBookNow }: { onBookNow: () => void }) => {
           
           <div className="grid grid-cols-1 md:grid-cols-3 gap-12">
             {[
-              { plan: 'Standard', price: '₦25,000', features: ['Standard Response', 'Verified Technicians', 'Digital Records'] },
-              { plan: 'Priority', price: '₦50,000', features: ['Priority Deployment', 'Extended Warranty', 'Smart Home Sync'] },
-              { plan: 'Elite', price: '₦100,000', features: ['Concierge Access', 'Emergency Response', 'Monthly Asset Audit'] },
+              { plan: 'Standard', price: 25000, features: ['Standard Response', 'Verified Technicians', 'Digital Records'] },
+              { plan: 'Priority', price: 50000, features: ['Priority Deployment', 'Extended Warranty', 'Smart Home Sync'] },
+              { plan: 'Elite', price: 100000, features: ['Concierge Access', 'Emergency Response', 'Monthly Asset Audit'] },
             ].map((tier, i) => (
               <div key={i} className="bg-white p-12 border border-stone-200 hover:border-brand-dark transition-all group">
                 <h4 className="data-label mb-8">{tier.plan}</h4>
-                <p className="text-4xl font-display mb-10 italic">{tier.price}<span className="text-xs not-italic text-stone-400"> / service</span></p>
+                <p className="text-4xl font-display mb-10 italic">{formatCurrency(convert(tier.price, 'NGN', currency), currency)}<span className="text-xs not-italic text-stone-400"> / service</span></p>
                 <ul className="space-y-6 mb-12">
                   {tier.features.map((f, j) => (
                     <li key={j} className="text-xs font-light text-stone-500 flex items-center gap-3">

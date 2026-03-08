@@ -1,12 +1,15 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Camera, Video, MapPin, Calendar, Clock, AlertCircle, ChevronLeft, ChevronRight, Check, Shield, Zap, Droplet, Wind, Home, Laptop, Wrench, Sparkles, Loader2 } from 'lucide-react';
+import { Camera, Video, MapPin, Calendar, Clock, AlertCircle, ChevronLeft, ChevronRight, Check, Shield, Zap, Droplet, Wind, Home, Laptop, Wrench, Sparkles, Loader2, Phone, CreditCard } from 'lucide-react';
 import { cn, formatCurrency } from '../lib/utils';
 import { analyzeIssue } from '../services/geminiService';
 import { useRealtime } from '../contexts/RealtimeContext';
+import { useCurrency } from '../contexts/CurrencyContext';
+import { usePaystackPayment } from 'react-paystack';
 
 const BookingPage = ({ onBack }: { onBack: () => void }) => {
-  const { createTicket } = useRealtime();
+  const { createTicket, recordPayment } = useRealtime();
+  const { currency, convert } = useCurrency();
   const [step, setStep] = useState(1);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -20,7 +23,25 @@ const BookingPage = ({ onBack }: { onBack: () => void }) => {
     address: '',
     isLiveVideo: false,
     isEmergency: false,
+    amount: 25000
   });
+
+  const config = {
+    reference: (new Date()).getTime().toString(),
+    email: "customer@bitnexus.com",
+    amount: formData.amount * 100,
+    publicKey: 'pk_test_your_public_key_here', // Replace with real public key
+  };
+
+  const initializePayment = usePaystackPayment(config);
+
+  const onSuccess = (reference: any) => {
+    handleSubmit(reference.reference);
+  };
+
+  const onClose = () => {
+    alert("Payment cancelled. Please complete payment to book your service.");
+  };
 
   const categories = [
     { id: 'elec', name: 'Electrical', icon: Zap, color: 'text-yellow-500' },
@@ -53,22 +74,25 @@ const BookingPage = ({ onBack }: { onBack: () => void }) => {
     setIsAnalyzing(false);
   };
 
-  const handleSubmit = async () => {
+  const handleSubmit = async (paymentRef?: string) => {
     setIsSubmitting(true);
-    // Simulate a bit of network delay for UX
-    await new Promise(r => setTimeout(r, 1500));
     
     createTicket({
-      customer: 'Sarah Jenkins', // Hardcoded for now, would be from auth
       service: categories.find(c => c.id === formData.category)?.name || 'General',
       description: formData.description,
       priority: formData.isEmergency ? 'Emergency' : 'Standard',
       date: `${formData.date}T${formData.time}:00Z`,
+      amount: formData.amount,
+      paymentRef: paymentRef
     });
 
     setIsSubmitting(false);
     setIsSuccess(true);
     setTimeout(onBack, 3000);
+  };
+
+  const handlePaymentClick = () => {
+    initializePayment({ onSuccess, onClose });
   };
 
   if (isSuccess) {
@@ -288,6 +312,17 @@ const BookingPage = ({ onBack }: { onBack: () => void }) => {
                   <button onClick={() => setFormData({ ...formData, isEmergency: !formData.isEmergency })} className="text-[10px] font-bold text-brand-accent">Toggle</button>
                 </div>
               </div>
+
+              <div className="flex justify-between items-center p-10 bg-brand-dark text-white rounded-3xl">
+                <div>
+                  <h4 className="text-[10px] uppercase tracking-widest font-bold text-white/40 mb-2">Total Amount</h4>
+                  <p className="text-3xl font-display italic">{formatCurrency(convert(formData.amount, 'NGN', currency), currency)}</p>
+                </div>
+                <div className="text-right">
+                  <p className="text-[8px] uppercase tracking-widest text-brand-accent font-bold mb-1">Escrow Protected</p>
+                  <Shield className="w-5 h-5 text-white/20 ml-auto" />
+                </div>
+              </div>
             </div>
 
             <div className="flex items-center gap-4 p-6 bg-emerald-50 text-emerald-700">
@@ -372,13 +407,25 @@ const BookingPage = ({ onBack }: { onBack: () => void }) => {
               Continue <ChevronRight className="w-5 h-5" />
             </button>
           ) : (
-            <button 
-              onClick={handleSubmit}
-              disabled={isSubmitting}
-              className="btn-primary py-5 px-16 text-base flex items-center gap-4"
-            >
-              {isSubmitting ? <Loader2 className="w-5 h-5 animate-spin" /> : "Confirm Assignment"}
-            </button>
+            <div className="flex gap-4">
+              <a 
+                href="tel:+234800BITNEXUS" 
+                className="md:hidden btn-outline py-5 px-8 flex items-center gap-3"
+              >
+                <Phone className="w-5 h-5" /> Call
+              </a>
+              <button 
+                onClick={handlePaymentClick}
+                disabled={isSubmitting}
+                className="btn-primary py-5 px-16 text-base flex items-center gap-4"
+              >
+                {isSubmitting ? <Loader2 className="w-5 h-5 animate-spin" /> : (
+                  <>
+                    <CreditCard className="w-5 h-5" /> Pay & Confirm
+                  </>
+                )}
+              </button>
+            </div>
           )}
         </div>
       </div>

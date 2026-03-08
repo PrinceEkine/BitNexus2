@@ -8,17 +8,19 @@ import SubscriptionManagement from './SubscriptionManagement';
 import WarrantyTracking from './WarrantyTracking';
 import SmartHome from './SmartHome';
 import HouseholdProfile from './HouseholdProfile';
+import ChatWidget from './ChatWidget';
+import AnimatedCheckbox from './AnimatedCheckbox';
 
 type CustomerView = 'dashboard' | 'subscription' | 'warranty' | 'smart-home' | 'profile';
 
 const CustomerDashboard = () => {
   const [activeView, setActiveView] = React.useState<CustomerView>('dashboard');
-  const { tickets } = useRealtime();
+  const { tickets, updateTicket, currentUser } = useRealtime();
 
-  // Filter tickets for this customer (hardcoded as Sarah Jenkins for now)
-  const customerName = 'Sarah Jenkins';
-  const activeTickets = tickets.filter(t => t.customer === customerName && t.status !== 'Completed');
-  const pastServices = tickets.filter(t => t.customer === customerName && t.status === 'Completed');
+  if (!currentUser) return null;
+
+  const activeTickets = tickets.filter(t => t.status !== 'Completed');
+  const pastServices = tickets.filter(t => t.status === 'Completed');
 
   if (activeView === 'subscription') {
     return <SubscriptionManagement onBack={() => setActiveView('dashboard')} />;
@@ -39,12 +41,19 @@ const CustomerDashboard = () => {
   return (
     <div className="min-h-screen bg-brand-muted pt-32 pb-24 px-8 md:px-12">
       <div className="max-w-7xl mx-auto">
+        {activeTickets.length > 0 && (
+          <ChatWidget 
+            ticketId={activeTickets[0].id} 
+            customerId={activeTickets[0].customer_id} 
+            technicianId={activeTickets[0].technician_id}
+          />
+        )}
         <div className="flex flex-col md:flex-row justify-between items-start md:items-end mb-16 gap-8">
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
           >
-            <h1 className="text-5xl font-display italic mb-4">Welcome back, <span className="not-italic">Sarah.</span></h1>
+            <h1 className="text-5xl font-display italic mb-4">Welcome back, <span className="not-italic">{currentUser.full_name?.split(' ')[0] || 'User'}.</span></h1>
             <button 
               onClick={() => setActiveView('profile')}
               className="data-label text-stone-400 hover:text-brand-accent transition-colors flex items-center gap-2"
@@ -71,9 +80,18 @@ const CustomerDashboard = () => {
                     <motion.div 
                       key={ticket.id} 
                       whileHover={{ x: 10 }}
-                      className="group cursor-pointer"
+                      className="group cursor-pointer flex items-start gap-6"
                     >
-                      <div className="flex justify-between items-start mb-6">
+                      <div className="pt-1">
+                        <AnimatedCheckbox 
+                          checked={ticket.status === 'Completed'} 
+                          onChange={(checked) => {
+                            updateTicket(ticket.id, { status: checked ? 'Completed' : 'Pending' });
+                          }} 
+                        />
+                      </div>
+                      <div className="flex-1">
+                        <div className="flex justify-between items-start mb-6">
                         <div>
                           <p className="font-mono text-[10px] text-stone-400 mb-2">{ticket.id}</p>
                           <h3 className="text-2xl font-display italic">{ticket.service}</h3>
@@ -89,7 +107,7 @@ const CustomerDashboard = () => {
                           </div>
                           <div>
                             <p className="data-label text-[8px] mb-0.5">Technician</p>
-                            <p className="text-xs font-bold uppercase tracking-widest">{ticket.technician || 'Assigning...'}</p>
+                            <p className="text-xs font-bold uppercase tracking-widest">{ticket.technician_name || 'Assigning...'}</p>
                           </div>
                         </div>
                         <div className="flex items-center gap-3">
@@ -107,7 +125,8 @@ const CustomerDashboard = () => {
                           Live Tracking <ExternalLink className="w-3 h-3" />
                         </button>
                       </div>
-                    </motion.div>
+                    </div>
+                  </motion.div>
                   ))}
                 </div>
               ) : (

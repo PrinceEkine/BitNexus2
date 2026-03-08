@@ -5,34 +5,61 @@ import BookingPage from './components/BookingPage';
 import CustomerDashboard from './components/CustomerDashboard';
 import AdminDashboard from './components/AdminDashboard';
 import WorkerDashboard from './components/WorkerDashboard';
+import AdminSignupPage from './components/AdminSignupPage';
 import AuthModal from './components/AuthModal';
 import InstallPrompt from './components/InstallPrompt';
-import { Menu, X, User, LogOut } from 'lucide-react';
+import SuperAppHub from './components/SuperAppHub';
+import Logo from './components/Logo';
+import UpdatePasswordPage from './components/UpdatePasswordPage';
+import { Menu, X, User, LogOut, Wallet } from 'lucide-react';
 import { cn } from './lib/utils';
-import { RealtimeProvider } from './contexts/RealtimeContext';
+import { RealtimeProvider, useRealtime } from './contexts/RealtimeContext';
+import { CurrencyProvider } from './contexts/CurrencyContext';
+import { supabase } from './lib/supabase';
 
-type View = 'landing' | 'booking' | 'dashboard' | 'admin' | 'worker';
+type View = 'landing' | 'booking' | 'dashboard' | 'admin' | 'worker' | 'admin-signup' | 'hub' | 'update-password';
 
 export default function App() {
   return (
-    <RealtimeProvider>
-      <AppContent />
-    </RealtimeProvider>
+    <CurrencyProvider>
+      <RealtimeProvider>
+        <AppContent />
+      </RealtimeProvider>
+    </CurrencyProvider>
   );
 }
 
 function AppContent() {
+  const { currentUser } = useRealtime();
   const [currentView, setCurrentView] = useState<View>('landing');
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [authModal, setAuthModal] = useState<{ isOpen: boolean; type: 'login' | 'signup' }>({
     isOpen: false,
     type: 'login',
   });
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
-  const [userRole, setUserRole] = useState<'customer' | 'admin' | 'worker'>('customer');
+  
+  const isLoggedIn = !!currentUser;
+  const userRole = currentUser?.role || 'customer';
+  
   const [isScrolled, setIsScrolled] = useState(false);
   const [isVisible, setIsVisible] = useState(true);
   const [lastScrollY, setLastScrollY] = useState(0);
+
+  useEffect(() => {
+    // Redirect to appropriate dashboard if logged in and on landing
+    if (isLoggedIn && currentView === 'landing') {
+      if (userRole === 'admin') setCurrentView('admin');
+      else if (userRole === 'worker') setCurrentView('worker');
+      else setCurrentView('hub');
+    }
+  }, [isLoggedIn, userRole]);
+
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    localStorage.removeItem('bitnexus_user');
+    setCurrentView('landing');
+    window.location.reload();
+  };
 
   useEffect(() => {
     const handleScroll = () => {
@@ -59,6 +86,19 @@ function AppContent() {
     return () => window.removeEventListener('scroll', handleScroll);
   }, [lastScrollY]);
 
+  useEffect(() => {
+    // Handle Supabase recovery redirect
+    if (window.location.hash.includes('type=recovery')) {
+      setCurrentView('update-password');
+    }
+    // Handle email verification success
+    if (window.location.hash.includes('type=verified')) {
+      alert('Email successfully verified! You can now log in.');
+      window.location.hash = '';
+      setAuthModal({ isOpen: true, type: 'login' });
+    }
+  }, []);
+
   // Simple routing simulation
   const renderView = () => {
     switch (currentView) {
@@ -68,10 +108,19 @@ function AppContent() {
         return <BookingPage onBack={() => setCurrentView('landing')} />;
       case 'dashboard':
         return <CustomerDashboard />;
+      case 'hub':
+        return <SuperAppHub userId="user-123" />;
       case 'admin':
         return <AdminDashboard />;
       case 'worker':
         return <WorkerDashboard />;
+      case 'admin-signup':
+        return <AdminSignupPage onBack={() => setCurrentView('landing')} />;
+      case 'update-password':
+        return <UpdatePasswordPage onComplete={() => {
+          window.location.hash = '';
+          setCurrentView('landing');
+        }} />;
       default:
         return <LandingPage onBookNow={() => setCurrentView('booking')} />;
     }
@@ -105,10 +154,14 @@ function AppContent() {
           <button 
             onClick={() => setCurrentView('landing')}
             className={cn(
-              "text-2xl font-display tracking-tighter transition-colors duration-500",
+              "flex items-center gap-3 text-2xl font-display tracking-tighter transition-colors duration-500",
               (currentView === 'landing' && !isScrolled) ? "text-white" : "text-brand-dark"
             )}
           >
+            <Logo 
+              className="w-10 h-10" 
+              variant={(currentView === 'landing' && !isScrolled) ? "light" : "dark"} 
+            />
             BitNexus<span className="text-brand-accent">.</span>
           </button>
 
@@ -136,20 +189,29 @@ function AppContent() {
             {isLoggedIn ? (
               <div className="flex items-center gap-6">
                 <button 
+                  onClick={() => setCurrentView('hub')}
+                  className={cn(
+                    "text-[10px] font-bold uppercase tracking-[0.2em] flex items-center gap-2 transition-colors duration-500",
+                    (currentView === 'landing' && !isScrolled) ? "text-white" : "text-brand-dark"
+                  )}
+                >
+                  <Wallet className="w-4 h-4" /> Wallet
+                </button>
+                <button 
                   onClick={() => {
                     if (userRole === 'admin') setCurrentView('admin');
                     else if (userRole === 'worker') setCurrentView('worker');
-                    else setCurrentView('dashboard');
+                    else setCurrentView('hub');
                   }}
                   className={cn(
                     "text-[10px] font-bold uppercase tracking-[0.2em] flex items-center gap-2 transition-colors duration-500",
                     (currentView === 'landing' && !isScrolled) ? "text-white" : "text-brand-dark"
                   )}
                 >
-                  <User className="w-4 h-4" /> Dashboard
+                  <User className="w-4 h-4" /> Hub
                 </button>
                 <button 
-                  onClick={() => setIsLoggedIn(false)}
+                  onClick={handleLogout}
                   className="text-gray-400 hover:text-red-500 transition-colors"
                 >
                   <LogOut className="w-4 h-4" />
@@ -157,6 +219,15 @@ function AppContent() {
               </div>
             ) : (
               <div className="flex items-center gap-6">
+                <button 
+                  onClick={() => setAuthModal({ isOpen: true, type: 'login' })}
+                  className={cn(
+                    "text-[10px] font-bold uppercase tracking-[0.2em] transition-colors duration-500",
+                    (currentView === 'landing' && !isScrolled) ? "text-white/50 hover:text-white" : "text-gray-400 hover:text-brand-dark"
+                  )}
+                >
+                  Staff Login
+                </button>
                 <button 
                   onClick={() => setAuthModal({ isOpen: true, type: 'login' })}
                   className={cn(
@@ -172,21 +243,6 @@ function AppContent() {
                 >
                   Join
                 </button>
-                {/* DEV TOGGLES */}
-                <div className="flex flex-col gap-1">
-                  <button 
-                    onClick={() => { setIsLoggedIn(true); setUserRole('admin'); setCurrentView('admin'); }}
-                    className="text-[8px] text-gray-400 opacity-20 hover:opacity-100 text-left"
-                  >
-                    Admin Mode
-                  </button>
-                  <button 
-                    onClick={() => { setIsLoggedIn(true); setUserRole('worker'); setCurrentView('worker'); }}
-                    className="text-[8px] text-gray-400 opacity-20 hover:opacity-100 text-left"
-                  >
-                    Worker Mode
-                  </button>
-                </div>
               </div>
             )}
           </div>
@@ -263,7 +319,10 @@ function AppContent() {
         <footer className="bg-brand-dark text-white py-20 px-6">
           <div className="max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-4 gap-12">
             <div className="md:col-span-2">
-              <h2 className="text-3xl font-display mb-6">BitNexus<span className="text-brand-accent">.</span></h2>
+              <div className="flex items-center gap-4 mb-6">
+                <Logo className="w-12 h-12" variant="light" />
+                <h2 className="text-3xl font-display">BitNexus<span className="text-brand-accent">.</span></h2>
+              </div>
               <p className="text-white/40 font-light max-w-sm leading-relaxed">
                 BitNexus is the all-in-one platform designed to bring order to your daily life. At the nexus of service and technology, we empower you to manage your home with precision and ease.
               </p>
@@ -281,7 +340,7 @@ function AppContent() {
               <ul className="space-y-4 text-sm font-light text-white/60">
                 <li><button className="hover:text-white transition-colors">About Us</button></li>
                 <li><button className="hover:text-white transition-colors">Contact</button></li>
-                <li><button className="hover:text-white transition-colors">Privacy Policy</button></li>
+                <li><button onClick={() => setCurrentView('admin-signup')} className="hover:text-brand-accent transition-colors">Admin Portal</button></li>
               </ul>
             </div>
           </div>

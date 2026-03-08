@@ -1,115 +1,162 @@
--- BitNexus Database Schema
+-- BitNexus Database Schema (Updated)
 
--- Users Table (Extends Supabase Auth)
+-- 1. Profiles (Linked to Supabase Auth)
 CREATE TABLE IF NOT EXISTS profiles (
   id UUID REFERENCES auth.users ON DELETE CASCADE PRIMARY KEY,
   full_name TEXT,
-  email TEXT UNIQUE,
-  role TEXT DEFAULT 'customer' CHECK (role IN ('customer', 'provider', 'admin')),
-  avatar_url TEXT,
-  phone TEXT,
-  household_profile JSONB DEFAULT '{}'::jsonb, -- { size, preferences, connected_devices: [] }
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
-  updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+  phone TEXT UNIQUE,
+  role TEXT CHECK (role IN ('customer', 'worker', 'admin')),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now())
 );
 
--- Providers Table
-CREATE TABLE IF NOT EXISTS providers (
-  id UUID REFERENCES profiles(id) ON DELETE CASCADE PRIMARY KEY,
-  specialty TEXT,
-  bio TEXT,
-  rating DECIMAL(3,2) DEFAULT 5.0,
-  jobs_completed INTEGER DEFAULT 0,
-  verification_status TEXT DEFAULT 'pending' CHECK (verification_status IN ('pending', 'verified', 'rejected')),
-  verification_documents TEXT[], -- URLs to uploaded docs
-  availability JSONB DEFAULT '[]'::jsonb, -- Weekly schedule
-  current_location_lat DECIMAL(9,6),
-  current_location_lng DECIMAL(9,6),
-  is_online BOOLEAN DEFAULT false,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
-);
-
--- Service Categories
-CREATE TABLE IF NOT EXISTS service_categories (
+-- 2. Technicians (Managed by Admin)
+CREATE TABLE IF NOT EXISTS technicians (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
   name TEXT NOT NULL,
-  description TEXT,
-  icon_name TEXT,
-  base_fee DECIMAL(12,2) NOT NULL,
-  status TEXT DEFAULT 'active' CHECK (status IN ('active', 'inactive')),
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+  status TEXT DEFAULT 'Idle',
+  load INTEGER DEFAULT 0,
+  specialty TEXT,
+  phone TEXT,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now())
 );
 
--- Bookings (Tickets)
-CREATE TABLE IF NOT EXISTS bookings (
+-- 3. Tickets (Service Requests)
+CREATE TABLE IF NOT EXISTS tickets (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-  customer_id UUID REFERENCES profiles(id),
-  provider_id UUID REFERENCES providers(id),
-  category_id UUID REFERENCES service_categories(id),
+  customer_id UUID REFERENCES auth.users(id),
+  customer_name TEXT NOT NULL,
+  service TEXT NOT NULL,
   description TEXT,
-  media_urls TEXT[],
-  scheduled_at TIMESTAMP WITH TIME ZONE,
-  address TEXT,
-  status TEXT DEFAULT 'pending' CHECK (status IN ('pending', 'assigned', 'in_progress', 'completed', 'cancelled')),
-  is_emergency BOOLEAN DEFAULT false,
-  is_live_video BOOLEAN DEFAULT false,
-  total_price DECIMAL(12,2),
-  payment_status TEXT DEFAULT 'pending' CHECK (payment_status IN ('pending', 'escrow', 'released', 'refunded')),
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
-  updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+  priority TEXT,
+  status TEXT DEFAULT 'Pending',
+  technician_id UUID REFERENCES technicians(id),
+  date TIMESTAMP WITH TIME ZONE,
+  amount DECIMAL(12,2) DEFAULT 0,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now())
 );
 
--- Transactions
+-- 4. Transactions (Financial Tracking)
 CREATE TABLE IF NOT EXISTS transactions (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-  booking_id UUID REFERENCES bookings(id),
+  ticket_id UUID REFERENCES tickets(id),
   amount DECIMAL(12,2) NOT NULL,
-  type TEXT CHECK (type IN ('payment', 'payout', 'refund')),
-  status TEXT DEFAULT 'pending',
-  provider_transaction_id TEXT, -- External ID from Paystack/Flutterwave
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+  status TEXT CHECK (status IN ('pending', 'escrow', 'paid', 'failed')),
+  type TEXT CHECK (type IN ('payment', 'payout')),
+  reference TEXT UNIQUE,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now())
 );
 
--- Notifications
-CREATE TABLE IF NOT EXISTS notifications (
+-- 5. Messages (Real-time Chat)
+CREATE TABLE IF NOT EXISTS messages (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-  user_id UUID REFERENCES profiles(id),
-  title TEXT,
-  message TEXT,
-  type TEXT, -- 'info', 'alert', 'success'
-  is_read BOOLEAN DEFAULT false,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+  ticket_id UUID REFERENCES tickets(id),
+  sender_id UUID REFERENCES auth.users(id),
+  text TEXT NOT NULL,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now())
 );
 
--- Audit Logs
-CREATE TABLE IF NOT EXISTS audit_logs (
+-- 6. Wallets
+CREATE TABLE IF NOT EXISTS wallets (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-  admin_id UUID REFERENCES profiles(id),
-  action TEXT NOT NULL,
-  entity_type TEXT,
-  entity_id TEXT,
-  metadata JSONB,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+  user_id UUID REFERENCES auth.users(id) UNIQUE,
+  balance DECIMAL(12, 2) DEFAULT 0.00,
+  currency TEXT DEFAULT 'NGN',
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now())
 );
 
--- RLS Policies
+-- 7. Wallet Transactions
+CREATE TABLE IF NOT EXISTS wallet_transactions (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  wallet_id UUID REFERENCES wallets(id),
+  amount DECIMAL(12, 2) NOT NULL,
+  type TEXT CHECK (type IN ('deposit', 'withdrawal', 'payment', 'refund')),
+  status TEXT DEFAULT 'completed',
+  reference TEXT,
+  description TEXT,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now())
+);
+
+-- 8. Service Categories
+CREATE TABLE IF NOT EXISTS service_categories (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  name TEXT NOT NULL UNIQUE,
+  description TEXT,
+  icon TEXT, -- Stores the icon name (e.g., 'Zap', 'Droplet')
+  base_fee DECIMAL(12, 2) DEFAULT 0.00,
+  status TEXT DEFAULT 'Active' CHECK (status IN ('Active', 'Inactive')),
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now())
+);
+
+-- Enable Row Level Security (RLS)
+ALTER TABLE wallets ENABLE ROW LEVEL SECURITY;
+ALTER TABLE wallet_transactions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
-ALTER TABLE providers ENABLE ROW LEVEL SECURITY;
-ALTER TABLE service_categories ENABLE ROW LEVEL SECURITY;
-ALTER TABLE bookings ENABLE ROW LEVEL SECURITY;
+ALTER TABLE technicians ENABLE ROW LEVEL SECURITY;
+ALTER TABLE tickets ENABLE ROW LEVEL SECURITY;
 ALTER TABLE transactions ENABLE ROW LEVEL SECURITY;
-ALTER TABLE notifications ENABLE ROW LEVEL SECURITY;
-ALTER TABLE audit_logs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE messages ENABLE ROW LEVEL SECURITY;
+ALTER TABLE service_categories ENABLE ROW LEVEL SECURITY;
 
--- Profiles: Users can read their own, admins can read all
+-- Service Categories Policies
+CREATE POLICY "Anyone can view active service categories" ON service_categories FOR SELECT USING (status = 'Active');
+CREATE POLICY "Admins can manage all service categories" ON service_categories FOR ALL USING (
+  EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'admin')
+);
+
+-- Wallet Policies
+CREATE POLICY "Users can view own wallet" ON wallets FOR SELECT USING (auth.uid() = user_id);
+CREATE POLICY "Users can view own wallet transactions" ON wallet_transactions FOR SELECT USING (
+  EXISTS (SELECT 1 FROM wallets WHERE wallets.id = wallet_transactions.wallet_id AND wallets.user_id = auth.uid())
+);
+
+-- Profiles: Users can read their own profile, admins can read all
 CREATE POLICY "Users can read own profile" ON profiles FOR SELECT USING (auth.uid() = id);
 CREATE POLICY "Admins can read all profiles" ON profiles FOR SELECT USING (
   EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'admin')
 );
 
--- Bookings: Customers can read own, Providers can read assigned, Admins can read all
-CREATE POLICY "Customers can read own bookings" ON bookings FOR SELECT USING (customer_id = auth.uid());
-CREATE POLICY "Providers can read assigned bookings" ON bookings FOR SELECT USING (provider_id = auth.uid());
-CREATE POLICY "Admins can read all bookings" ON bookings FOR SELECT USING (
+-- Tickets: Customers can read own, technicians assigned to them can read, admins can read all
+CREATE POLICY "Customers can read own tickets" ON tickets FOR SELECT USING (customer_id = auth.uid());
+CREATE POLICY "Admins can read all tickets" ON tickets FOR SELECT USING (
   EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'admin')
 );
+
+-- Messages: Only sender, ticket customer, or admin can read
+CREATE POLICY "Relevant parties can read messages" ON messages FOR SELECT USING (
+  sender_id = auth.uid() OR 
+  EXISTS (
+    SELECT 1 FROM tickets 
+    WHERE tickets.id = messages.ticket_id AND tickets.customer_id = auth.uid()
+  ) OR
+  EXISTS (
+    SELECT 1 FROM profiles 
+    WHERE profiles.id = auth.uid() AND profiles.role = 'admin'
+  )
+);
+
+CREATE POLICY "Relevant parties can insert messages" ON messages FOR INSERT WITH CHECK (
+  sender_id = auth.uid() OR
+  EXISTS (
+    SELECT 1 FROM profiles 
+    WHERE profiles.id = auth.uid() AND profiles.role = 'admin'
+  )
+);
+
+-- Insert initial technicians
+INSERT INTO technicians (name, status, load, specialty, phone)
+VALUES 
+  ('David Okoro', 'Active', 85, 'Electrical', '+2348012345678'),
+  ('Grace Eze', 'Idle', 0, 'HVAC', '+2348023456789'),
+  ('Samuel Ade', 'Offline', 0, 'Plumbing', '+2348034567890')
+ON CONFLICT DO NOTHING;
+
+-- Insert initial service categories
+INSERT INTO service_categories (name, description, icon, base_fee, status)
+VALUES 
+  ('Electrical', 'Wiring, repairs, and installations.', 'Zap', 15000, 'Active'),
+  ('Plumbing', 'Pipe repairs, leaks, and drainage.', 'Droplet', 12000, 'Active'),
+  ('HVAC', 'Air conditioning and heating systems.', 'Wind', 25000, 'Active'),
+  ('Cleaning', 'Deep cleaning and maintenance.', 'Home', 8000, 'Active'),
+  ('Tech Support', 'Device setup and troubleshooting.', 'Laptop', 20000, 'Active'),
+  ('Handyman', 'General repairs and assembly.', 'Wrench', 10000, 'Active')
+ON CONFLICT (name) DO NOTHING;

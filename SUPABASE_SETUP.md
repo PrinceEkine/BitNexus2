@@ -21,73 +21,66 @@ Follow these steps to set up your Supabase backend for the BitNexus platform.
 Go to the **SQL Editor** in your Supabase dashboard and run the following script to create the necessary tables and set up Row Level Security (RLS).
 
 ```sql
--- Enable UUID extension
-create extension if not exists "uuid-ossp";
-
--- 1. Profiles Table (Extends Supabase Auth)
-create table public.profiles (
-  id uuid references auth.users on delete cascade primary key,
-  full_name text,
-  avatar_url text,
-  role text check (role in ('customer', 'worker', 'admin')) default 'customer',
-  phone text,
-  address text,
-  household_size integer,
-  preferences text[],
-  created_at timestamp with time zone default timezone('utc'::text, now()) not null
+-- 1. Profiles (Linked to Supabase Auth)
+CREATE TABLE IF NOT EXISTS profiles (
+  id UUID REFERENCES auth.users ON DELETE CASCADE PRIMARY KEY,
+  full_name TEXT,
+  role TEXT CHECK (role IN ('customer', 'worker', 'admin')),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now())
 );
 
--- 2. Service Categories
-create table public.service_categories (
-  id uuid default uuid_generate_v4() primary key,
-  name text not null,
-  description text,
-  icon text,
-  base_price decimal(12,2),
-  is_active boolean default true
+-- 2. Technicians (Managed by Admin)
+CREATE TABLE IF NOT EXISTS technicians (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  name TEXT NOT NULL,
+  status TEXT DEFAULT 'Idle',
+  load INTEGER DEFAULT 0,
+  specialty TEXT,
+  phone TEXT,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now())
 );
 
--- 3. Bookings (Tickets)
-create table public.bookings (
-  id uuid default uuid_generate_v4() primary key,
-  customer_id uuid references public.profiles(id) not null,
-  worker_id uuid references public.profiles(id),
-  service_id uuid references public.service_categories(id) not null,
-  status text check (status in ('pending', 'assigned', 'in_progress', 'completed', 'cancelled')) default 'pending',
-  priority text check (priority in ('standard', 'emergency')) default 'standard',
-  scheduled_at timestamp with time zone not null,
-  location text not null,
-  description text,
-  total_amount decimal(12,2),
-  created_at timestamp with time zone default timezone('utc'::text, now()) not null
+-- 3. Tickets (Service Requests)
+CREATE TABLE IF NOT EXISTS tickets (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  customer_id UUID REFERENCES auth.users(id),
+  customer_name TEXT NOT NULL,
+  service TEXT NOT NULL,
+  description TEXT,
+  priority TEXT,
+  status TEXT DEFAULT 'Pending',
+  technician_id UUID REFERENCES technicians(id),
+  date TIMESTAMP WITH TIME ZONE,
+  amount DECIMAL(12,2) DEFAULT 0,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now())
 );
 
--- 4. Smart Devices
-create table public.smart_devices (
-  id uuid default uuid_generate_v4() primary key,
-  profile_id uuid references public.profiles(id) on delete cascade not null,
-  name text not null,
-  type text not null,
-  status text,
-  battery_level text,
-  last_activity timestamp with time zone default now()
+-- 4. Transactions (Financial Tracking)
+CREATE TABLE IF NOT EXISTS transactions (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  ticket_id UUID REFERENCES tickets(id),
+  amount DECIMAL(12,2) NOT NULL,
+  status TEXT CHECK (status IN ('pending', 'escrow', 'paid', 'failed')),
+  type TEXT CHECK (type IN ('payment', 'payout')),
+  reference TEXT UNIQUE,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now())
+);
+
+-- 5. Messages (Real-time Chat)
+CREATE TABLE IF NOT EXISTS messages (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  ticket_id UUID REFERENCES tickets(id),
+  sender_id UUID REFERENCES auth.users(id),
+  text TEXT NOT NULL,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now())
 );
 
 -- Enable RLS
-alter table public.profiles enable row level security;
-alter table public.service_categories enable row level security;
-alter table public.bookings enable row level security;
-alter table public.smart_devices enable row level security;
-
--- Basic RLS Policies
--- Profiles: Users can read/write their own profile
-create policy "Users can view own profile" on public.profiles for select using (auth.uid() = id);
-create policy "Users can update own profile" on public.profiles for update using (auth.uid() = id);
-
--- Bookings: Customers see their own, Workers see assigned, Admins see all
-create policy "Customers view own bookings" on public.bookings for select using (auth.uid() = customer_id);
-create policy "Workers view assigned bookings" on public.bookings for select using (auth.uid() = worker_id);
-create policy "Admins view all bookings" on public.bookings for select using (true); -- Add role check here later
+ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
+ALTER TABLE technicians ENABLE ROW LEVEL SECURITY;
+ALTER TABLE tickets ENABLE ROW LEVEL SECURITY;
+ALTER TABLE transactions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE messages ENABLE ROW LEVEL SECURITY;
 ```
 
 ## 4. Authentication

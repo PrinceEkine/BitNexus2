@@ -5,9 +5,16 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
-export function formatCurrency(amount: number) {
-  return new Intl.NumberFormat('en-NG', {
+export function formatCurrency(amount: number, currency: string = 'NGN') {
+  const localeMap: Record<string, string> = {
+    NGN: 'en-NG',
+    USD: 'en-US',
+    EUR: 'de-DE',
+    GBP: 'en-GB'
+  };
+
+  return new Intl.NumberFormat(localeMap[currency] || 'en-US', {
     style: 'currency',
-    currency: 'NGN',
+    currency: currency,
   }).format(amount);
 }

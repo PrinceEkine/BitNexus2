@@ -7,7 +7,7 @@ import { useRealtime } from '../contexts/RealtimeContext';
 const TechnicianManagement = () => {
   const { technicians, createTechnician, deleteTechnician } = useRealtime();
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
-  const [newTech, setNewTech] = useState({ name: '', specialty: 'Electrical' });
+  const [newTech, setNewTech] = useState({ name: '', specialty: 'Electrical', email: '', password: '', phone: '' });
 
   const stats = [
     { label: 'Active Now', value: technicians.filter(t => t.status === 'Active').length.toString(), icon: Users },
@@ -20,7 +20,7 @@ const TechnicianManagement = () => {
     e.preventDefault();
     createTechnician(newTech);
     setIsAddModalOpen(false);
-    setNewTech({ name: '', specialty: 'Electrical' });
+    setNewTech({ name: '', specialty: 'Electrical', email: '', password: '', phone: '' });
   };
 
   return (
@@ -185,9 +185,47 @@ const TechnicianManagement = () => {
                     <option value="Carpentry">Carpentry</option>
                   </select>
                 </div>
+                <div>
+                  <label className="block text-[10px] uppercase tracking-widest font-bold text-gray-400 mb-2">Phone Number</label>
+                  <input 
+                    type="tel" 
+                    required
+                    value={newTech.phone}
+                    onChange={(e) => setNewTech({ ...newTech, phone: e.target.value })}
+                    className="w-full border-b border-gray-200 py-3 focus:border-brand-dark outline-none transition-colors font-light"
+                    placeholder="+234..."
+                  />
+                </div>
+                <div className="pt-4 border-t border-gray-50">
+                  <p className="text-[8px] uppercase tracking-widest font-bold text-brand-accent mb-4">Login Credentials</p>
+                  <div className="space-y-6">
+                    <div>
+                      <label className="block text-[10px] uppercase tracking-widest font-bold text-gray-400 mb-2">Email Address</label>
+                      <input 
+                        type="email" 
+                        required
+                        value={newTech.email}
+                        onChange={(e) => setNewTech({ ...newTech, email: e.target.value })}
+                        className="w-full border-b border-gray-200 py-3 focus:border-brand-dark outline-none transition-colors font-light"
+                        placeholder="staff@bitnexus.com"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] uppercase tracking-widest font-bold text-gray-400 mb-2">Password</label>
+                      <input 
+                        type="password" 
+                        required
+                        value={newTech.password}
+                        onChange={(e) => setNewTech({ ...newTech, password: e.target.value })}
+                        className="w-full border-b border-gray-200 py-3 focus:border-brand-dark outline-none transition-colors font-light"
+                        placeholder="••••••••"
+                      />
+                    </div>
+                  </div>
+                </div>
 
                 <button type="submit" className="btn-primary w-full py-4 mt-4">
-                  Register Technician
+                  Register Technician & Create Account
                 </button>
               </form>
             </motion.div>

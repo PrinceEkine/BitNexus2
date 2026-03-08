@@ -1,7 +1,9 @@
 import React, { useState } from 'react';
-import { LayoutDashboard, Ticket, Users, Settings, CreditCard, TrendingUp, Map, Star, MoreVertical, Calendar } from 'lucide-react';
+import { LayoutDashboard, Ticket, Users, Settings, CreditCard, TrendingUp, Map, Star, MoreVertical, Calendar, MessageSquare } from 'lucide-react';
 import { formatCurrency, cn } from '../lib/utils';
+import Logo from './Logo';
 import { useRealtime } from '../contexts/RealtimeContext';
+import { useCurrency } from '../contexts/CurrencyContext';
 import TechnicianAvailability from './TechnicianAvailability';
 import TechnicianManagement from './TechnicianManagement';
 import PricingControl from './PricingControl';
@@ -10,20 +12,32 @@ import TicketDetails from './TicketDetails';
 import ServiceCategories from './ServiceCategories';
 import UserManagement from './UserManagement';
 import FinancialDashboard from './FinancialDashboard';
+import AdminChat from './AdminChat';
 import AIInsights from './AIInsights';
+import AnimatedCheckbox from './AnimatedCheckbox';
 
-type AdminView = 'overview' | 'tickets' | 'technicians' | 'availability' | 'pricing' | 'zones' | 'ticket-details' | 'services' | 'users' | 'financials' | 'ai-insights';
+type AdminView = 'overview' | 'tickets' | 'technicians' | 'availability' | 'pricing' | 'zones' | 'ticket-details' | 'services' | 'users' | 'financials' | 'ai-insights' | 'chat';
 
 const AdminDashboard = () => {
+  const { currency, convert } = useCurrency();
   const [activeView, setActiveView] = useState<AdminView>('overview');
+  const [prevView, setPrevView] = useState<AdminView>('overview');
   const [selectedTicketId, setSelectedTicketId] = useState<string | null>(null);
-  const { tickets, technicians, isConnected } = useRealtime();
+  const { tickets, technicians, isConnected, updateTicket } = useRealtime();
+
+  const handleViewChange = (view: AdminView) => {
+    if (view !== 'ticket-details') {
+      setPrevView(view);
+    }
+    setActiveView(view);
+  };
 
   const stats = [
-    { label: 'Total Revenue', value: formatCurrency(tickets.length * 25000), trend: '+12.5%', icon: TrendingUp },
+    { label: 'Total Revenue', value: formatCurrency(convert(tickets.length * 25000, 'NGN', currency), currency), trend: '+12.5%', icon: TrendingUp },
     { label: 'Active Tickets', value: tickets.filter(t => t.status !== 'Completed').length.toString(), trend: `${tickets.filter(t => t.status === 'Pending').length} Pending`, icon: Ticket },
     { label: 'Technicians', value: technicians.length.toString(), trend: `${technicians.filter(t => t.status === 'Active').length} Active`, icon: Users },
     { label: 'Avg Rating', value: '4.8', trend: 'Top Tier', icon: Star },
+    { label: 'WhatsApp API', value: 'Connected', trend: 'Live Webhook', icon: MessageSquare },
   ];
 
   const recentRequests = tickets.slice(0, 5);
@@ -63,12 +77,13 @@ const AdminDashboard = () => {
               <section className="lg:col-span-2 bg-white border border-stone-200">
                 <div className="p-8 border-b border-stone-200 flex justify-between items-center">
                   <h3 className="data-label text-brand-ink">Real-time Queue</h3>
-                  <button onClick={() => setActiveView('tickets')} className="data-label text-brand-accent hover:underline">Full Registry</button>
+                  <button onClick={() => handleViewChange('tickets')} className="data-label text-brand-accent hover:underline">Full Registry</button>
                 </div>
                 <div className="overflow-x-auto">
                   <table className="w-full text-left border-collapse">
                     <thead>
                       <tr className="bg-stone-50">
+                        <th className="px-8 py-4 w-10 border-b border-stone-200"></th>
                         <th className="px-8 py-4 data-label border-b border-stone-200">ID</th>
                         <th className="px-8 py-4 data-label border-b border-stone-200">Service</th>
                         <th className="px-8 py-4 data-label border-b border-stone-200">Customer</th>
@@ -79,7 +94,18 @@ const AdminDashboard = () => {
                     </thead>
                     <tbody className="divide-y divide-stone-100">
                       {recentRequests.map((req) => (
-                        <tr key={req.id} className="hover:bg-stone-50 transition-colors group">
+                        <tr key={req.id} className={cn(
+                          "hover:bg-stone-50 transition-colors group",
+                          req.status === 'Completed' && "opacity-50"
+                        )}>
+                          <td className="px-8 py-6">
+                            <AnimatedCheckbox 
+                              checked={req.status === 'Completed'} 
+                              onChange={(checked) => {
+                                updateTicket(req.id, { status: checked ? 'Completed' : 'Pending' });
+                              }} 
+                            />
+                          </td>
                           <td className="px-8 py-6 font-mono text-[10px] text-stone-400">{req.id}</td>
                           <td className="px-8 py-6">
                             <p className="text-xs font-bold uppercase tracking-widest">{req.service}</p>
@@ -95,7 +121,7 @@ const AdminDashboard = () => {
                           <td className="px-8 py-6 font-mono text-[10px]">{req.time}</td>
                           <td className="px-8 py-6 text-right">
                             <button 
-                              onClick={() => { setSelectedTicketId(req.id); setActiveView('ticket-details'); }}
+                              onClick={() => { setSelectedTicketId(req.id); handleViewChange('ticket-details'); }}
                               className="p-2 hover:bg-stone-200 transition-colors"
                             >
                               <MoreVertical className="w-4 h-4 text-stone-400" />
@@ -112,7 +138,7 @@ const AdminDashboard = () => {
               <section className="bg-brand-dark text-white p-10 border border-stone-800">
                 <div className="flex justify-between items-center mb-10">
                   <h3 className="data-label text-white/40">Field Status</h3>
-                  <button onClick={() => setActiveView('availability')} className="data-label text-brand-accent">Registry</button>
+                  <button onClick={() => handleViewChange('availability')} className="data-label text-brand-accent">Registry</button>
                 </div>
                 <div className="space-y-8">
                   {technicians.map((tech, i) => (
@@ -160,10 +186,12 @@ const AdminDashboard = () => {
         return <UserManagement />;
       case 'financials':
         return <FinancialDashboard />;
+      case 'chat':
+        return <AdminChat />;
       case 'ai-insights':
         return <AIInsights />;
       case 'ticket-details':
-        return <TicketDetails onBack={() => setActiveView('overview')} />;
+        return <TicketDetails ticketId={selectedTicketId || ''} onBack={() => setActiveView(prevView)} />;
       default:
         return <div className="p-20 text-center text-gray-400 uppercase tracking-widest text-xs">Module Coming Soon</div>;
     }
@@ -174,7 +202,10 @@ const AdminDashboard = () => {
       {/* Sidebar */}
       <aside className="w-64 bg-brand-dark text-white flex flex-col sticky top-0 h-screen">
         <div className="p-8">
-          <h1 className="text-2xl font-display tracking-tighter">BitNexus<span className="text-brand-accent">.</span></h1>
+          <div className="flex items-center gap-3 mb-2">
+            <Logo className="w-8 h-8" variant="light" />
+            <h1 className="text-2xl font-display tracking-tighter">BitNexus<span className="text-brand-accent">.</span></h1>
+          </div>
           <p className="text-[8px] uppercase tracking-[0.4em] text-white/40 mt-1">Operations</p>
         </div>
         
@@ -183,16 +214,17 @@ const AdminDashboard = () => {
             { id: 'overview', label: 'Dashboard', icon: LayoutDashboard },
             { id: 'tickets', label: 'Tickets', icon: Ticket },
             { id: 'technicians', label: 'Technicians', icon: Users },
-            { id: 'users', label: 'Users', icon: Star },
+            { id: 'users', label: 'User Management', icon: Star },
             { id: 'availability', label: 'Availability', icon: Calendar },
-            { id: 'services', label: 'Services', icon: Settings },
+            { id: 'services', label: 'Service Categories', icon: Settings },
             { id: 'financials', label: 'Financials', icon: CreditCard },
+            { id: 'chat', label: 'Messages', icon: MessageSquare },
             { id: 'ai-insights', label: 'AI Insights', icon: TrendingUp },
             { id: 'zones', label: 'Zones', icon: Map },
           ].map((item) => (
             <button 
               key={item.id}
-              onClick={() => setActiveView(item.id as AdminView)}
+              onClick={() => handleViewChange(item.id as AdminView)}
               className={`w-full flex items-center gap-4 px-4 py-3 text-xs font-bold uppercase tracking-widest transition-colors ${
                 activeView === item.id ? 'bg-white/10 text-white' : 'text-white/50 hover:text-white hover:bg-white/5'
               }`}

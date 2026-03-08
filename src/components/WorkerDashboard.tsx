@@ -25,15 +25,16 @@ type WorkerTab = 'jobs' | 'earnings' | 'profile' | 'settings';
 const WorkerDashboard = () => {
   const [activeTab, setActiveTab] = useState<WorkerTab>('jobs');
   const [activeJobId, setActiveJobId] = useState<string | null>(null);
-  const { tickets, technicians, updateTicket, updateTechnician } = useRealtime();
+  const { tickets, technicians, updateTicket, updateTechnician, currentUser } = useRealtime();
 
-  // Filter jobs assigned to this worker (hardcoded as David Okoro for now)
-  const workerName = 'David Okoro';
-  const myJobs = tickets.filter(t => t.technician === workerName || t.status === 'Pending');
+  if (!currentUser) return null;
+
+  // Filter jobs assigned to this worker
+  const myJobs = tickets.filter(t => t.technician_id === currentUser.id);
 
   const stats = [
-    { label: 'Today Earnings', value: tickets.filter(t => t.technician === workerName && t.status === 'Completed').length * 15000, icon: DollarSign, trend: '+15%' },
-    { label: 'Jobs Completed', value: tickets.filter(t => t.technician === workerName && t.status === 'Completed').length, icon: CheckCircle, trend: 'This Month' },
+    { label: 'Today Earnings', value: myJobs.filter(t => t.status === 'Completed').length * 15000, icon: DollarSign, trend: '+15%' },
+    { label: 'Jobs Completed', value: myJobs.filter(t => t.status === 'Completed').length, icon: CheckCircle, trend: 'This Month' },
     { label: 'Avg Rating', value: 4.9, icon: TrendingUp, trend: 'Top 5%' },
   ];
 
@@ -70,7 +71,7 @@ const WorkerDashboard = () => {
                 </div>
                 <div className="flex flex-col md:flex-row justify-between items-end gap-8">
                   <div>
-                    <h4 className="text-3xl font-display mb-3 italic">Electrical Repair</h4>
+                    <h4 className="text-3xl font-display mb-3 italic">{myJobs.find(j => j.id === activeJobId)?.service}</h4>
                     <p className="text-sm text-white/50 font-light flex items-center gap-2">
                       <MapPin className="w-3 h-3" /> 12 Victoria Island, Lagos
                     </p>
@@ -96,15 +97,15 @@ const WorkerDashboard = () => {
                 <div className="mt-10 pt-10 border-t border-white/5 grid grid-cols-2 md:grid-cols-4 gap-8">
                   <div>
                     <p className="data-label text-white/20 mb-1">Customer</p>
-                    <p className="text-xs font-bold uppercase tracking-widest">Sarah Jenkins</p>
+                    <p className="text-xs font-bold uppercase tracking-widest">{myJobs.find(j => j.id === activeJobId)?.customer_name}</p>
                   </div>
                   <div>
                     <p className="data-label text-white/20 mb-1">Priority</p>
-                    <p className="text-xs font-bold uppercase tracking-widest text-red-500">Emergency</p>
+                    <p className="text-xs font-bold uppercase tracking-widest text-red-500">{myJobs.find(j => j.id === activeJobId)?.priority}</p>
                   </div>
                   <div>
                     <p className="data-label text-white/20 mb-1">Est. Value</p>
-                    <p className="font-mono text-xs">₦15,000.00</p>
+                    <p className="font-mono text-xs">{formatCurrency(myJobs.find(j => j.id === activeJobId)?.amount || 0)}</p>
                   </div>
                   <div>
                     <p className="data-label text-white/20 mb-1">Protocol</p>
@@ -133,7 +134,7 @@ const WorkerDashboard = () => {
                         </div>
                         <h4 className="text-2xl font-display italic">{job.service}</h4>
                       </div>
-                      <p className="font-mono text-lg text-brand-ink">{formatCurrency(15000)}</p>
+                      <p className="font-mono text-lg text-brand-ink">{formatCurrency(job.amount)}</p>
                     </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-10">
@@ -160,12 +161,12 @@ const WorkerDashboard = () => {
                         </div>
                         <div>
                           <p className="data-label mb-0.5">Contact</p>
-                          <span className="text-xs font-bold uppercase tracking-widest">{job.customer}</span>
+                          <span className="text-xs font-bold uppercase tracking-widest">{job.customer_name}</span>
                         </div>
                       </div>
                       <button 
                         onClick={() => {
-                          updateTicket(job.id, { status: 'In Progress', technician: workerName });
+                          updateTicket(job.id, { status: 'In Progress', technician_name: currentUser.full_name });
                           setActiveJobId(job.id);
                         }}
                         disabled={!!activeJobId || job.status === 'Completed'}
@@ -254,9 +255,11 @@ const WorkerDashboard = () => {
         
         <div className="p-8 border-t border-white/5">
           <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-full bg-brand-accent"></div>
+            <div className="w-8 h-8 rounded-full bg-brand-accent flex items-center justify-center text-[10px] font-bold">
+              {currentUser.full_name?.charAt(0) || 'U'}
+            </div>
             <div>
-              <p className="text-[10px] font-bold uppercase tracking-widest">John Doe</p>
+              <p className="text-[10px] font-bold uppercase tracking-widest">{currentUser.full_name || 'User'}</p>
               <p className="text-[8px] text-white/40 uppercase tracking-widest">Technician</p>
             </div>
           </div>

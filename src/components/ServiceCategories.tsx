@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Plus, MoreVertical, Settings, Zap, Droplet, Wind, Home, Laptop, Wrench, X, Trash2, Edit2, Check } from 'lucide-react';
-import { formatCurrency } from '../lib/utils';
+import { formatCurrency, cn } from '../lib/utils';
+import { useCurrency } from '../contexts/CurrencyContext';
 
 interface Category {
   id: string;
@@ -24,6 +25,7 @@ const iconMap = {
 };
 
 const ServiceCategories = () => {
+  const { currency, convert } = useCurrency();
   const [categories, setCategories] = useState<Category[]>([
     { id: 'C-01', name: 'Electrical', description: 'Wiring, repairs, and installations.', icon: Zap, baseFee: 15000, activeTechs: 5, status: 'Active' },
     { id: 'C-02', name: 'Plumbing', description: 'Pipe repairs, leaks, and drainage.', icon: Droplet, baseFee: 12000, activeTechs: 4, status: 'Active' },
@@ -33,6 +35,8 @@ const ServiceCategories = () => {
     { id: 'C-06', name: 'Handyman', description: 'General repairs and assembly.', icon: Wrench, baseFee: 10000, activeTechs: 4, status: 'Active' },
   ]);
 
+  const [searchTerm, setSearchTerm] = useState('');
+  const [statusFilter, setStatusFilter] = useState<'All' | 'Active' | 'Inactive'>('All');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingCategory, setEditingCategory] = useState<Category | null>(null);
   const [formData, setFormData] = useState({
@@ -99,6 +103,13 @@ const ServiceCategories = () => {
     }
   };
 
+  const filteredCategories = categories.filter(cat => {
+    const matchesSearch = cat.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
+                         cat.description.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesStatus = statusFilter === 'All' || cat.status === statusFilter;
+    return matchesSearch && matchesStatus;
+  });
+
   return (
     <div className="space-y-8">
       <header className="flex justify-between items-end">
@@ -114,8 +125,35 @@ const ServiceCategories = () => {
         </button>
       </header>
 
+      {/* Filters */}
+      <div className="flex flex-col md:flex-row gap-4 bg-white p-6 border border-gray-100">
+        <div className="flex-1">
+          <input 
+            type="text" 
+            placeholder="Search categories..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="w-full border-b border-gray-100 py-2 text-sm outline-none focus:border-brand-dark transition-colors font-light"
+          />
+        </div>
+        <div className="flex gap-2">
+          {(['All', 'Active', 'Inactive'] as const).map((s) => (
+            <button
+              key={s}
+              onClick={() => setStatusFilter(s)}
+              className={cn(
+                "px-4 py-2 text-[10px] font-bold uppercase tracking-widest border transition-all",
+                statusFilter === s ? "bg-brand-dark text-white border-brand-dark" : "bg-white text-gray-400 border-gray-100 hover:border-brand-dark"
+              )}
+            >
+              {s}
+            </button>
+          ))}
+        </div>
+      </div>
+
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-        {categories.map((cat) => (
+        {filteredCategories.map((cat) => (
           <div key={cat.id} className="bg-white border border-gray-100 p-8 hover:border-brand-dark transition-all group relative">
             <div className="flex justify-between items-start mb-8">
               <div className="w-12 h-12 bg-gray-50 flex items-center justify-center">
@@ -146,7 +184,7 @@ const ServiceCategories = () => {
             <div className="space-y-4 pt-6 border-t border-gray-50">
               <div className="flex justify-between items-center">
                 <span className="text-[10px] uppercase tracking-widest font-bold text-gray-400">Base Fee</span>
-                <span className="text-sm font-bold">{formatCurrency(cat.baseFee)}</span>
+                <span className="text-sm font-bold">{formatCurrency(convert(cat.baseFee, 'NGN', currency), currency)}</span>
               </div>
               <div className="flex justify-between items-center">
                 <span className="text-[10px] uppercase tracking-widest font-bold text-gray-400">Active Techs</span>

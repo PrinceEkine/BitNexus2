@@ -2,8 +2,10 @@ import React from 'react';
 import { motion } from 'motion/react';
 import { Settings, DollarSign, Percent, Zap, Shield, Info, Save } from 'lucide-react';
 import { formatCurrency } from '../lib/utils';
+import { useCurrency } from '../contexts/CurrencyContext';
 
 const PricingControl = () => {
+  const { currency, convert } = useCurrency();
   return (
     <div className="space-y-8">
       <header>
@@ -35,7 +37,7 @@ const PricingControl = () => {
                     <p className="text-[10px] text-gray-400 mt-1 uppercase tracking-widest">Base call-out fee</p>
                   </div>
                   <div className="flex items-center gap-4">
-                    <span className="text-sm font-display">{formatCurrency(item.price)}</span>
+                    <span className="text-sm font-display">{formatCurrency(convert(item.price, 'NGN', currency), currency)}</span>
                     <input 
                       type="number" 
                       className="w-24 border border-gray-100 p-2 text-xs font-bold outline-none focus:border-brand-dark"
@@ -82,7 +84,7 @@ const PricingControl = () => {
               <div>
                 <p className="text-[10px] text-white/40 uppercase tracking-widest mb-2">Elite Monthly Plan</p>
                 <div className="flex items-center justify-between">
-                  <span className="text-2xl font-display">₦45,000</span>
+                  <span className="text-2xl font-display">{formatCurrency(convert(45000, 'NGN', currency), currency)}</span>
                   <button className="text-[10px] font-bold text-brand-accent uppercase tracking-widest">Update</button>
                 </div>
               </div>
@@ -93,7 +95,7 @@ const PricingControl = () => {
                 </div>
                 <div className="flex items-center justify-between text-xs font-light text-white/60">
                   <span>MRR</span>
-                  <span className="text-emerald-400 font-bold">₦6.39M</span>
+                  <span className="text-emerald-400 font-bold">{formatCurrency(convert(6390000, 'NGN', currency), currency)}</span>
                 </div>
               </div>
             </div>
