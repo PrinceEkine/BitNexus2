@@ -7,6 +7,7 @@ const AdminSignupPage = ({ onBack }: { onBack: () => void }) => {
   const [formData, setFormData] = useState({
     fullName: '',
     email: '',
+    phone: '',
     password: '',
     adminToken: ''
   });
@@ -149,6 +150,18 @@ const AdminSignupPage = ({ onBack }: { onBack: () => void }) => {
                 onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                 className="w-full border-b border-gray-100 py-4 focus:border-brand-dark outline-none transition-colors font-light text-lg"
                 placeholder="admin@bitnexus.com"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <label className="block text-[10px] uppercase tracking-widest font-bold text-gray-400">WhatsApp Number</label>
+              <input 
+                type="tel" 
+                required
+                value={formData.phone}
+                onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                className="w-full border-b border-gray-100 py-4 focus:border-brand-dark outline-none transition-colors font-light text-lg"
+                placeholder="+234 800 000 0000"
               />
             </div>
 

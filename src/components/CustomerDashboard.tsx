@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
 import { motion } from 'motion/react';
-import { Ticket as TicketIcon, History, User, FileText, Shield, CreditCard, ExternalLink, Clock, Smartphone, ChevronRight } from 'lucide-react';
+import { Ticket as TicketIcon, History, User, FileText, Shield, CreditCard, ExternalLink, Clock, Smartphone, ChevronRight, Plus } from 'lucide-react';
 import { formatCurrency } from '../lib/utils';
 import { useRealtime } from '../contexts/RealtimeContext';
+import axios from 'axios';
 
 import SubscriptionManagement from './SubscriptionManagement';
 import WarrantyTracking from './WarrantyTracking';
@@ -13,14 +14,42 @@ import AnimatedCheckbox from './AnimatedCheckbox';
 
 type CustomerView = 'dashboard' | 'subscription' | 'warranty' | 'smart-home' | 'profile';
 
-const CustomerDashboard = () => {
+const CustomerDashboard = ({ onBookNow }: { onBookNow: () => void }) => {
   const [activeView, setActiveView] = React.useState<CustomerView>('dashboard');
-  const { tickets, updateTicket, currentUser } = useRealtime();
+  const { tickets, updateTicket, currentUser, wallet } = useRealtime();
 
   if (!currentUser) return null;
 
   const activeTickets = tickets.filter(t => t.status !== 'Completed');
   const pastServices = tickets.filter(t => t.status === 'Completed');
+
+  const handleFundWallet = async () => {
+    try {
+      const response = await axios.post('/api/paystack/initialize', {
+        email: currentUser.email,
+        amount: 5000, // Default top up amount
+        metadata: {
+          custom_fields: [
+            {
+              display_name: "User ID",
+              variable_name: "user_id",
+              value: currentUser.id
+            },
+            {
+              display_name: "Payment Type",
+              variable_name: "type",
+              value: 'wallet_topup'
+            }
+          ]
+        }
+      });
+      if (response.data.status) {
+        window.location.href = response.data.data.authorization_url;
+      }
+    } catch (error) {
+      console.error("Funding Error:", error);
+    }
+  };
 
   if (activeView === 'subscription') {
     return <SubscriptionManagement onBack={() => setActiveView('dashboard')} />;
@@ -61,7 +90,7 @@ const CustomerDashboard = () => {
               Premium Member • Lagos, Nigeria <ChevronRight className="w-3 h-3" />
             </button>
           </motion.div>
-          <button className="btn-primary">Request New Service</button>
+          <button onClick={onBookNow} className="btn-primary">Request New Service</button>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-12">
@@ -179,6 +208,31 @@ const CustomerDashboard = () => {
 
           {/* Sidebar */}
           <div className="space-y-12">
+            {/* Wallet - Technical Dashboard */}
+            <section className="bg-white p-10 border border-stone-200">
+              <div className="flex items-center justify-between mb-10">
+                <h2 className="data-label">Nexus Wallet</h2>
+                <CreditCard className="w-4 h-4 text-stone-300" />
+              </div>
+              <div className="mb-10">
+                <p className="data-label text-[8px] text-stone-400 mb-2 uppercase tracking-widest">Available Balance</p>
+                <h3 className="text-4xl font-display italic">
+                  {wallet ? formatCurrency(wallet.balance) : formatCurrency(0)}
+                </h3>
+              </div>
+              <div className="space-y-4">
+                <button 
+                  onClick={handleFundWallet}
+                  className="w-full py-4 bg-brand-dark text-white text-[10px] font-bold uppercase tracking-widest hover:bg-brand-accent transition-all flex items-center justify-center gap-3"
+                >
+                  <Plus className="w-4 h-4" /> Fund Wallet
+                </button>
+                <p className="text-[8px] text-stone-400 text-center italic leading-relaxed">
+                  Funds are held securely and deducted automatically upon service completion. Withdrawals are currently disabled.
+                </p>
+              </div>
+            </section>
+
             {/* Subscription - Dark Luxury */}
             <section className="bg-brand-dark text-white p-10 border border-stone-800 relative overflow-hidden group">
               <div className="absolute -right-4 -bottom-4 w-32 h-32 bg-brand-accent/10 rounded-full blur-3xl group-hover:bg-brand-accent/20 transition-all duration-1000" />

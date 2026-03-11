@@ -8,6 +8,51 @@ import nodemailer from "nodemailer";
 
 dotenv.config();
 
+import webpush from 'web-push';
+
+// Web Push Configuration
+const VAPID_PUBLIC_KEY = process.env.VITE_VAPID_PUBLIC_KEY;
+const VAPID_PRIVATE_KEY = process.env.VAPID_PRIVATE_KEY;
+const VAPID_SUBJECT = process.env.VAPID_SUBJECT || 'mailto:admin@bitnexus.com';
+
+if (VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY) {
+  webpush.setVapidDetails(
+    VAPID_SUBJECT,
+    VAPID_PUBLIC_KEY,
+    VAPID_PRIVATE_KEY
+  );
+}
+
+// In-memory subscription store (In production, use Supabase/Database)
+const subscriptions: Map<string, any[]> = new Map();
+
+// Helper to send notifications
+async function sendPushNotification(userId: string, payload: any) {
+  const userSubscriptions = subscriptions.get(userId) || [];
+  const results = await Promise.all(
+    userSubscriptions.map(async (sub) => {
+      try {
+        await webpush.sendNotification(sub, JSON.stringify(payload));
+        return { success: true };
+      } catch (error: any) {
+        if (error.statusCode === 410 || error.statusCode === 404) {
+          // Subscription expired or no longer valid
+          return { success: false, expired: true, subscription: sub };
+        }
+        console.error('Push notification error:', error);
+        return { success: false, error };
+      }
+    })
+  );
+
+  // Clean up expired subscriptions
+  const expired = results.filter(r => r.expired).map(r => r.subscription);
+  if (expired.length > 0) {
+    const current = subscriptions.get(userId) || [];
+    subscriptions.set(userId, current.filter(s => !expired.includes(s)));
+  }
+}
+
 const app = express();
 app.use(express.json());
 const server = createServer(app);
@@ -31,7 +76,7 @@ const supabase = createClient(
   supabaseKey || "placeholder-key"
 );
 
-const ADMIN_TOKEN = process.env.ADMIN_SIGNUP_TOKEN || "nexus-admin-2024";
+const ADMIN_TOKEN = "Ritom2026$#$$";
 
 console.log("-----------------------------------------");
 console.log("Supabase URL:", supabaseUrl ? "Configured" : "MISSING");
@@ -266,6 +311,30 @@ app.get("/api/health", (req, res) => {
   res.json({ status: "ok" });
 });
 
+app.post("/api/notifications/subscribe", (req, res) => {
+  const { subscription, userId } = req.body;
+  if (!userId) return res.status(400).json({ error: "userId is required" });
+  
+  const userSubs = subscriptions.get(userId) || [];
+  // Avoid duplicate endpoints
+  if (!userSubs.find(s => s.endpoint === subscription.endpoint)) {
+    userSubs.push(subscription);
+    subscriptions.set(userId, userSubs);
+  }
+  
+  res.json({ success: true });
+});
+
+app.post("/api/notifications/unsubscribe", (req, res) => {
+  const { endpoint, userId } = req.body;
+  if (!userId) return res.status(400).json({ error: "userId is required" });
+  
+  const userSubs = subscriptions.get(userId) || [];
+  subscriptions.set(userId, userSubs.filter(s => s.endpoint !== endpoint));
+  
+  res.json({ success: true });
+});
+
 app.get("/api/db-health", async (req, res) => {
   try {
     const { data: tables, error } = await supabase
@@ -308,6 +377,20 @@ app.post("/api/tickets", async (req, res) => {
   if (newTicket) {
     broadcast({ type: "ticket:created", data: newTicket });
     
+    // Notify Admins if priority is High
+    if (newTicket.priority === 'High') {
+      const { data: admins } = await supabase.from('profiles').select('id').eq('role', 'admin');
+      if (admins) {
+        admins.forEach(admin => {
+          sendPushNotification(admin.id, {
+            title: 'Urgent Service Request',
+            body: `New high-priority ${newTicket.service} request from ${newTicket.customer_name}`,
+            url: `/admin/tickets/${newTicket.id}`
+          });
+        });
+      }
+    }
+    
     if (data.paymentRef) {
       const { data: newTx } = await supabase
         .from('transactions')
@@ -338,7 +421,18 @@ app.patch("/api/tickets/:id", async (req, res) => {
     .single();
   
   if (error) return res.status(400).json({ error: error.message });
-  if (updatedTicket) broadcast({ type: "ticket:updated", data: updatedTicket });
+  if (updatedTicket) {
+    broadcast({ type: "ticket:updated", data: updatedTicket });
+    
+    // Notify Worker if assigned
+    if (data.worker_id && updatedTicket.worker_id === data.worker_id) {
+      sendPushNotification(data.worker_id, {
+        title: 'New Job Assignment',
+        body: `You have been assigned a new ${updatedTicket.service} job.`,
+        url: `/worker/jobs/${updatedTicket.id}`
+      });
+    }
+  }
   res.json(updatedTicket);
 });
 
@@ -496,29 +590,160 @@ app.post("/api/whatsapp/webhook", async (req, res) => {
   }
 });
 
+// Paystack Integration
+const PAYSTACK_SECRET_KEY = process.env.PAYSTACK_SECRET_KEY;
+
+app.post("/api/paystack/initialize", async (req, res) => {
+  const { email, amount, metadata } = req.body;
+  try {
+    const response = await axios.post(
+      "https://api.paystack.co/transaction/initialize",
+      {
+        email,
+        amount: Math.round(amount * 100), // convert to kobo
+        metadata,
+        channels: ['card', 'bank', 'ussd', 'qr', 'mobile_money', 'bank_transfer']
+      },
+      {
+        headers: {
+          Authorization: `Bearer ${PAYSTACK_SECRET_KEY}`,
+          "Content-Type": "application/json",
+        },
+      }
+    );
+    res.json(response.data);
+  } catch (error: any) {
+    console.error("Paystack Init Error:", error.response?.data || error.message);
+    res.status(500).json({ error: "Failed to initialize payment" });
+  }
+});
+
+app.post("/api/paystack/webhook", async (req, res) => {
+  // In production, verify the signature from Paystack
+  const event = req.body;
+  if (event.event === "charge.success") {
+    const { amount, customer, metadata, reference } = event.data;
+    
+    // Extract user_id and type from custom_fields if available
+    let userId = metadata?.user_id;
+    let type = metadata?.type;
+
+    if (metadata?.custom_fields) {
+      const userIdField = metadata.custom_fields.find((f: any) => f.variable_name === 'user_id');
+      const typeField = metadata.custom_fields.find((f: any) => f.variable_name === 'type');
+      if (userIdField) userId = userIdField.value;
+      if (typeField) type = typeField.value;
+    }
+
+    if (type === 'wallet_topup' && userId && userId !== 'guest') {
+      // Update wallet balance
+      const { data: wallet } = await supabase
+        .from("wallets")
+        .select("balance")
+        .eq("user_id", userId)
+        .single();
+      
+      const newBalance = (wallet?.balance || 0) + (amount / 100);
+      
+      await supabase
+        .from("wallets")
+        .update({ balance: newBalance })
+        .eq("user_id", userId);
+      
+      // Record transaction
+      await supabase.from("transactions").insert({
+        user_id: userId,
+        amount: amount / 100,
+        status: 'paid',
+        type: 'payment',
+        reference: reference,
+        description: 'Wallet Top-up via Paystack'
+      });
+    }
+  }
+  res.sendStatus(200);
+});
+
 // Wallet API
 app.get("/api/wallet/:userId", async (req, res) => {
   const { userId } = req.params;
-  const { data, error } = await supabase
-    .from("wallets")
-    .select("*")
-    .eq("user_id", userId)
-    .single();
-
-  if (error && error.code !== "PGRST116") return res.status(400).json({ error: error.message });
   
-  if (!data) {
-    // Create wallet if not exists
-    const { data: newWallet, error: createError } = await supabase
+  // Basic validation to avoid Supabase 400 errors on obviously invalid UUIDs if the column is UUID
+  // However, we'll just handle the error from Supabase gracefully
+  try {
+    const { data, error } = await supabase
       .from("wallets")
-      .insert([{ user_id: userId, balance: 0 }])
-      .select()
+      .select("*")
+      .eq("user_id", userId)
       .single();
-    if (createError) return res.status(400).json({ error: createError.message });
-    return res.json(newWallet);
-  }
 
-  res.json(data);
+    if (error && error.code !== "PGRST116") {
+      console.error("Supabase wallet fetch error:", error);
+      // If it's a syntax error (likely invalid UUID), return a 404 or a default wallet
+      if (error.code === "22P02") {
+        return res.json({ user_id: userId, balance: 0, currency: 'NGN' });
+      }
+      return res.status(500).json({ error: error.message });
+    }
+    
+    if (!data) {
+      // Create wallet if not exists - only if it's a valid attempt
+      const { data: newWallet, error: createError } = await supabase
+        .from("wallets")
+        .insert([{ user_id: userId, balance: 0 }])
+        .select()
+        .single();
+        
+      if (createError) {
+        console.error("Supabase wallet creation error:", createError);
+        // Fallback for demo/invalid IDs
+        return res.json({ user_id: userId, balance: 0, currency: 'NGN' });
+      }
+      return res.json(newWallet);
+    }
+
+    res.json(data);
+  } catch (err) {
+    console.error("Internal wallet API error:", err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+app.post("/api/wallet/deduct", async (req, res) => {
+  const { userId, amount, ticketId } = req.body;
+  try {
+    const { data: wallet, error: fetchError } = await supabase
+      .from("wallets")
+      .select("balance")
+      .eq("user_id", userId)
+      .single();
+
+    if (fetchError) throw fetchError;
+    if (wallet.balance < amount) return res.status(400).json({ error: "Insufficient balance" });
+
+    const newBalance = wallet.balance - amount;
+    const { error: updateError } = await supabase
+      .from("wallets")
+      .update({ balance: newBalance })
+      .eq("user_id", userId);
+
+    if (updateError) throw updateError;
+
+    // Record transaction
+    await supabase.from("transactions").insert({
+      user_id: userId,
+      ticket_id: ticketId,
+      amount: -amount,
+      status: 'paid',
+      type: 'payment',
+      description: `Service fee deduction for ticket ${ticketId}`
+    });
+
+    res.json({ success: true, newBalance });
+  } catch (error: any) {
+    console.error("Wallet Deduction Error:", error.message);
+    res.status(500).json({ error: "Failed to deduct from wallet" });
+  }
 });
 
 app.post("/api/wallet/deposit", async (req, res) => {
@@ -612,10 +837,20 @@ app.post("/api/auth/whatsapp/verify-otp", async (req, res) => {
 
 app.post("/api/auth/signup", async (req, res) => {
   try {
-    const { email, password, role, adminToken, fullName } = req.body;
+    const { email, password, role, adminToken, fullName, phone } = req.body;
 
-    if (role === 'admin' && adminToken !== ADMIN_TOKEN) {
-      return res.status(403).json({ error: "Invalid admin signup token" });
+    console.log(`Attempting signup for: ${email}, Role: ${role}`);
+
+    if (role === 'admin') {
+      const providedToken = (adminToken || "").trim();
+      const expectedToken = (ADMIN_TOKEN || "").trim();
+      console.log(`Admin signup attempt for ${email}.`);
+      console.log(`Provided: "${providedToken}" (length: ${providedToken.length})`);
+      console.log(`Expected: "${expectedToken}" (length: ${expectedToken.length})`);
+      if (providedToken !== expectedToken) {
+        console.warn(`Admin signup failed: Invalid token for ${email}`);
+        return res.status(403).json({ error: "Invalid admin signup token" });
+      }
     }
 
     const { data, error } = await supabase.auth.signUp({
@@ -625,21 +860,34 @@ app.post("/api/auth/signup", async (req, res) => {
         emailRedirectTo: `${process.env.APP_URL || 'http://localhost:3000'}/#type=verified`,
         data: {
           full_name: fullName,
-          role: role
+          role: role,
+          phone: phone
         }
       }
     });
 
-    if (error) return res.status(400).json({ error: error.message });
+    if (error) {
+      console.error(`Supabase Auth Signup Error for ${email}:`, error.message);
+      return res.status(400).json({ error: error.message });
+    }
     
     // Create profile in public.profiles table
     if (data.user) {
-      console.log(`Signup successful for ${email}. Creating profile for user ID: ${data.user.id}`);
-      const { error: profileError } = await supabase.from('profiles').insert([
-        { id: data.user.id, full_name: fullName, role: role }
-      ]);
+      console.log(`Auth signup successful for ${email}. User ID: ${data.user.id}. Creating database profile...`);
+      const profileData: any = { 
+        id: data.user.id, 
+        full_name: fullName, 
+        role: role
+      };
+      
+      // Only add phone if it was provided
+      if (phone) profileData.phone = phone;
+
+      const { error: profileError } = await supabase.from('profiles').insert([profileData]);
+      
       if (profileError) {
         console.error("❌ Profile Creation Error:", profileError.message, profileError.details, profileError.hint);
+        // If it fails, we still have the user in Auth, and RealtimeContext will fallback to metadata
       } else {
         console.log(`✅ Profile created successfully for ${email}`);
       }

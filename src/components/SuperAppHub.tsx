@@ -20,27 +20,18 @@ import { useCurrency, CurrencyCode } from '../contexts/CurrencyContext';
 import { cn, formatCurrency } from '../lib/utils';
 import Logo from './Logo';
 import axios from 'axios';
+import { PushNotificationManager } from './PushNotificationManager';
 
 const SuperAppHub = ({ userId }: { userId: string }) => {
-  const { tickets } = useRealtime();
+  const { tickets, wallet } = useRealtime();
   const { currency, setCurrency, convert } = useCurrency();
-  const [wallet, setWallet] = useState<{ balance: number; currency: string } | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [activeSubApp, setActiveSubApp] = useState<string | null>(null);
 
-  useEffect(() => {
-    const fetchWallet = async () => {
-      try {
-        const res = await axios.get(`/api/wallet/${userId}`);
-        setWallet(res.data);
-      } catch (err) {
-        console.error("Wallet fetch error", err);
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchWallet();
-  }, [userId]);
+  const subApps = [
+    { id: 'inventory', name: 'StockBit Pro', desc: 'Inventory Management', icon: Package, url: 'https://stockbitpro.netlify.app/' },
+    { id: 'analytics', name: 'Nexus Analytics', desc: 'Service Insights', icon: Zap, url: 'https://analytics.bitnexus.com' },
+  ];
 
   const activeTickets = tickets.filter(t => t.status !== 'Completed');
 
@@ -124,6 +115,9 @@ const SuperAppHub = ({ userId }: { userId: string }) => {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           {/* Left Column: Wallet & Quick Actions */}
           <div className="lg:col-span-1 space-y-8">
+            {/* Push Notifications */}
+            <PushNotificationManager />
+
             {/* Wallet Card */}
             <motion.div 
               initial={{ opacity: 0, y: 20 }}
@@ -157,7 +151,7 @@ const SuperAppHub = ({ userId }: { userId: string }) => {
             <div className="grid grid-cols-2 gap-4">
               {[
                 { label: 'Book Pro', icon: Zap, color: 'bg-amber-50 text-amber-600', action: () => {} },
-                { label: 'Inventory', icon: Package, color: 'bg-blue-50 text-blue-600', action: () => setActiveSubApp('https://stockbitpro.netlify.app') },
+                { label: 'Inventory', icon: Package, color: 'bg-blue-50 text-blue-600', action: () => setActiveSubApp('https://stockbitpro.netlify.app/') },
                 { label: 'Shop Parts', icon: ShoppingBag, color: 'bg-emerald-50 text-emerald-600', action: () => {} },
                 { label: 'Smart Home', icon: Smartphone, color: 'bg-purple-50 text-purple-600', action: () => {} }
               ].map((action) => (

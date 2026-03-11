@@ -19,6 +19,7 @@ import {
 import { formatCurrency, cn } from '../lib/utils';
 import { motion, AnimatePresence } from 'motion/react';
 import { useRealtime } from '../contexts/RealtimeContext';
+import { PushNotificationManager } from './PushNotificationManager';
 
 type WorkerTab = 'jobs' | 'earnings' | 'profile' | 'settings';
 
@@ -253,6 +254,10 @@ const WorkerDashboard = () => {
           ))}
         </nav>
         
+        <div className="p-4 border-t border-white/5">
+          <PushNotificationManager />
+        </div>
+
         <div className="p-8 border-t border-white/5">
           <div className="flex items-center gap-3">
             <div className="w-8 h-8 rounded-full bg-brand-accent flex items-center justify-center text-[10px] font-bold">

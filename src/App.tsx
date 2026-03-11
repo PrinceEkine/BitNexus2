@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import LandingPage from './components/LandingPage';
 import BookingPage from './components/BookingPage';
+import ChatWidget from './components/ChatWidget';
 import CustomerDashboard from './components/CustomerDashboard';
 import AdminDashboard from './components/AdminDashboard';
 import WorkerDashboard from './components/WorkerDashboard';
@@ -30,7 +31,7 @@ export default function App() {
 }
 
 function AppContent() {
-  const { currentUser } = useRealtime();
+  const { currentUser, tickets } = useRealtime();
   const [currentView, setCurrentView] = useState<View>('landing');
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [authModal, setAuthModal] = useState<{ isOpen: boolean; type: 'login' | 'signup' }>({
@@ -58,7 +59,6 @@ function AppContent() {
     await supabase.auth.signOut();
     localStorage.removeItem('bitnexus_user');
     setCurrentView('landing');
-    window.location.reload();
   };
 
   useEffect(() => {
@@ -107,9 +107,9 @@ function AppContent() {
       case 'booking':
         return <BookingPage onBack={() => setCurrentView('landing')} />;
       case 'dashboard':
-        return <CustomerDashboard />;
+        return <CustomerDashboard onBookNow={() => setCurrentView('booking')} />;
       case 'hub':
-        return <SuperAppHub userId="user-123" />;
+        return <SuperAppHub userId={currentUser?.id || 'anonymous'} />;
       case 'admin':
         return <AdminDashboard />;
       case 'worker':
@@ -140,8 +140,18 @@ function AppContent() {
     setIsMenuOpen(false);
   };
 
+  const guestTickets = JSON.parse(localStorage.getItem('bitnexus_guest_tickets') || '[]');
+  const activeGuestTicket = tickets.find(t => guestTickets.includes(t.id) && t.status !== 'Completed');
+
   return (
     <div className="relative font-sans">
+      {activeGuestTicket && (
+        <ChatWidget 
+          ticketId={activeGuestTicket.id}
+          customerId="guest"
+          technicianId={activeGuestTicket.technician_id}
+        />
+      )}
       {/* Navigation */}
       <nav className={cn(
         "fixed top-0 left-0 right-0 z-50 transition-all duration-700",

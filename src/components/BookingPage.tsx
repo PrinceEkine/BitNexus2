@@ -8,7 +8,7 @@ import { useCurrency } from '../contexts/CurrencyContext';
 import { usePaystackPayment } from 'react-paystack';
 
 const BookingPage = ({ onBack }: { onBack: () => void }) => {
-  const { createTicket, recordPayment } = useRealtime();
+  const { createTicket, recordPayment, currentUser, wallet } = useRealtime();
   const { currency, convert } = useCurrency();
   const [step, setStep] = useState(1);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -28,9 +28,23 @@ const BookingPage = ({ onBack }: { onBack: () => void }) => {
 
   const config = {
     reference: (new Date()).getTime().toString(),
-    email: "customer@bitnexus.com",
+    email: currentUser?.email || "guest@bitnexus.com",
     amount: formData.amount * 100,
-    publicKey: 'pk_test_your_public_key_here', // Replace with real public key
+    publicKey: import.meta.env.VITE_PAYSTACK_PUBLIC_KEY || 'pk_test_your_public_key_here',
+    metadata: {
+      custom_fields: [
+        {
+          display_name: "User ID",
+          variable_name: "user_id",
+          value: currentUser?.id || 'guest'
+        },
+        {
+          display_name: "Payment Type",
+          variable_name: "type",
+          value: 'service_payment'
+        }
+      ]
+    }
   };
 
   const initializePayment = usePaystackPayment(config);
@@ -77,22 +91,32 @@ const BookingPage = ({ onBack }: { onBack: () => void }) => {
   const handleSubmit = async (paymentRef?: string) => {
     setIsSubmitting(true);
     
-    createTicket({
-      service: categories.find(c => c.id === formData.category)?.name || 'General',
-      description: formData.description,
-      priority: formData.isEmergency ? 'Emergency' : 'Standard',
-      date: `${formData.date}T${formData.time}:00Z`,
-      amount: formData.amount,
-      paymentRef: paymentRef
-    });
+    try {
+      await createTicket({
+        service: categories.find(c => c.id === formData.category)?.name || 'General',
+        description: formData.description,
+        priority: formData.isEmergency ? 'Emergency' : 'Standard',
+        date: `${formData.date}T${formData.time}:00Z`,
+        amount: formData.amount,
+        paymentRef: paymentRef
+      });
 
-    setIsSubmitting(false);
-    setIsSuccess(true);
-    setTimeout(onBack, 3000);
+      setIsSuccess(true);
+      setTimeout(onBack, 3000);
+    } catch (error) {
+      console.error("Booking Error:", error);
+      alert("Failed to create booking. Please try again.");
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const handlePaymentClick = () => {
-    initializePayment({ onSuccess, onClose });
+    if (wallet && wallet.balance >= formData.amount) {
+      handleSubmit('wallet');
+    } else {
+      initializePayment({ onSuccess, onClose });
+    }
   };
 
   if (isSuccess) {
@@ -421,7 +445,8 @@ const BookingPage = ({ onBack }: { onBack: () => void }) => {
               >
                 {isSubmitting ? <Loader2 className="w-5 h-5 animate-spin" /> : (
                   <>
-                    <CreditCard className="w-5 h-5" /> Pay & Confirm
+                    <CreditCard className="w-5 h-5" /> 
+                    {(wallet && wallet.balance >= formData.amount) ? 'Pay from Wallet' : 'Pay & Confirm'}
                   </>
                 )}
               </button>

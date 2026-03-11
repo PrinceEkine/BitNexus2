@@ -15,6 +15,7 @@ import FinancialDashboard from './FinancialDashboard';
 import AdminChat from './AdminChat';
 import AIInsights from './AIInsights';
 import AnimatedCheckbox from './AnimatedCheckbox';
+import { PushNotificationManager } from './PushNotificationManager';
 
 type AdminView = 'overview' | 'tickets' | 'technicians' | 'availability' | 'pricing' | 'zones' | 'ticket-details' | 'services' | 'users' | 'financials' | 'ai-insights' | 'chat';
 
@@ -235,6 +236,10 @@ const AdminDashboard = () => {
           ))}
         </nav>
         
+        <div className="p-4 border-t border-white/5">
+          <PushNotificationManager />
+        </div>
+
         <div className="p-8 border-t border-white/5">
           <div className="flex items-center gap-3">
             <div className="w-8 h-8 rounded-full bg-brand-accent"></div>

@@ -68,6 +68,7 @@ interface RealtimeContextType {
   transactions: Transaction[];
   messages: Message[];
   currentUser: any;
+  wallet: { balance: number; currency: string } | null;
   createTicket: (data: Partial<Ticket>) => void;
   updateTicket: (id: string, data: Partial<Ticket>) => void;
   createTechnician: (data: Partial<Technician>) => void;
@@ -86,30 +87,56 @@ export const RealtimeProvider = ({ children }: { children: ReactNode }) => {
   const [technicians, setTechnicians] = useState<Technician[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [messages, setMessages] = useState<Message[]>([]);
+  const [wallet, setWallet] = useState<{ balance: number; currency: string } | null>(null);
   const [isConnected, setIsConnected] = useState(true);
   const [currentUser, setCurrentUser] = useState<any>(null);
+
+  const fetchWallet = async (userId: string) => {
+    try {
+      const res = await axios.get(`/api/wallet/${userId}`);
+      setWallet(res.data);
+    } catch (err) {
+      console.error("Wallet fetch error", err);
+    }
+  };
 
   useEffect(() => {
     const getSession = async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (user) {
-        // Get profile
-        const { data: profile } = await supabase.from('profiles').select('*').eq('id', user.id).single();
-        setCurrentUser(profile || user);
+        // Set user immediately from metadata for faster UI response
+        setCurrentUser({ ...user, ...user.user_metadata });
+        fetchWallet(user.id);
+        
+        // Then fetch full profile in background
+        supabase.from('profiles').select('*').eq('id', user.id).single().then(({ data: profile }) => {
+          if (profile) setCurrentUser(profile);
+        });
       } else {
         // Check local storage for mock user (WhatsApp)
         const savedUser = localStorage.getItem('bitnexus_user');
-        if (savedUser) setCurrentUser(JSON.parse(savedUser));
+        if (savedUser) {
+          const u = JSON.parse(savedUser);
+          setCurrentUser(u);
+          fetchWallet(u.id);
+        }
       }
     };
     getSession();
 
     const { data: authListener } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (session?.user) {
-        const { data: profile } = await supabase.from('profiles').select('*').eq('id', session.user.id).single();
-        setCurrentUser(profile || session.user);
+        // Set user immediately from metadata
+        setCurrentUser({ ...session.user, ...session.user.user_metadata });
+        fetchWallet(session.user.id);
+        
+        // Then fetch full profile
+        supabase.from('profiles').select('*').eq('id', session.user.id).single().then(({ data: profile }) => {
+          if (profile) setCurrentUser(profile);
+        });
       } else {
         setCurrentUser(null);
+        setWallet(null);
       }
     });
 
@@ -129,51 +156,53 @@ export const RealtimeProvider = ({ children }: { children: ReactNode }) => {
 
     // Initial Fetch
     const fetchData = async () => {
-      let ticketQuery = supabase.from('tickets').select('*').order('created_at', { ascending: false });
-      
-      // Visibility Logic
-      if (currentUser.role === 'customer') {
-        ticketQuery = ticketQuery.eq('customer_id', currentUser.id);
-      } else if (currentUser.role === 'worker') {
-        ticketQuery = ticketQuery.eq('technician_id', currentUser.id);
-      }
-      // Admin sees all (no filter)
-
-      const { data: t } = await ticketQuery;
-      const { data: tech } = await supabase.from('technicians').select('*');
-      
-      let txQuery = supabase.from('transactions').select('*').order('created_at', { ascending: false });
-      if (currentUser.role === 'customer') {
-        // This requires a join or subquery, but for simplicity we'll filter in JS if needed
-        // or just fetch all for now if it's a demo. 
-        // Better: filter by tickets the user owns.
-        if (t && t.length > 0) {
-          txQuery = txQuery.in('ticket_id', t.map(tk => tk.id));
-        } else if (currentUser.role !== 'admin') {
-          setTransactions([]);
+      try {
+        const ticketQuery = supabase.from('tickets').select('*').order('created_at', { ascending: false });
+        
+        // Visibility Logic
+        if (currentUser.role === 'customer') {
+          ticketQuery.eq('customer_id', currentUser.id);
+        } else if (currentUser.role === 'worker') {
+          ticketQuery.eq('technician_id', currentUser.id);
         }
-      }
-      const { data: tx } = await txQuery;
 
-      // Messages Visibility
-      let msgQuery = supabase.from('messages').select('*').order('created_at', { ascending: true });
-      if (currentUser.role !== 'admin') {
-        if (t && t.length > 0) {
-          msgQuery = msgQuery.in('ticket_id', t.map(tk => tk.id));
-        } else {
-          setMessages([]);
-          msgQuery = null;
+        // Parallelize initial core data fetch
+        const [ticketsRes, techsRes] = await Promise.all([
+          ticketQuery,
+          supabase.from('technicians').select('*')
+        ]);
+
+        const t = ticketsRes.data;
+        const tech = techsRes.data;
+
+        if (t) setTickets(t);
+        if (tech) setTechnicians(tech);
+
+        // Fetch dependent data (transactions and messages) in parallel
+        const txQuery = supabase.from('transactions').select('*').order('created_at', { ascending: false });
+        const msgQuery = supabase.from('messages').select('*').order('created_at', { ascending: true });
+
+        if (currentUser.role !== 'admin') {
+          if (t && t.length > 0) {
+            const ticketIds = t.map(tk => tk.id);
+            txQuery.in('ticket_id', ticketIds);
+            msgQuery.in('ticket_id', ticketIds);
+          } else {
+            setTransactions([]);
+            setMessages([]);
+            return;
+          }
         }
-      }
-      
-      if (msgQuery) {
-        const { data: msg } = await msgQuery;
-        if (msg) setMessages(msg.map(m => ({ ...m, text: decryptMessage(m.text) })));
-      }
 
-      if (t) setTickets(t);
-      if (tech) setTechnicians(tech);
-      if (tx) setTransactions(tx);
+        const [txRes, msgRes] = await Promise.all([txQuery, msgQuery]);
+
+        if (txRes.data) setTransactions(txRes.data);
+        if (msgRes.data) {
+          setMessages(msgRes.data.map(m => ({ ...m, text: decryptMessage(m.text) })));
+        }
+      } catch (err) {
+        console.error('Error fetching initial data:', err);
+      }
     };
 
     fetchData();
@@ -230,13 +259,22 @@ export const RealtimeProvider = ({ children }: { children: ReactNode }) => {
       })
       .subscribe();
 
+    // Wallet Realtime
+    const walletChannel = supabase
+      .channel('wallet-changes')
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'wallets', filter: `user_id=eq.${currentUser.id}` }, (payload) => {
+        setWallet(payload.new as any);
+      })
+      .subscribe();
+
     return () => {
       supabase.removeChannel(ticketsChannel);
       supabase.removeChannel(techniciansChannel);
       supabase.removeChannel(transactionsChannel);
       supabase.removeChannel(messagesChannel);
+      supabase.removeChannel(walletChannel);
     };
-  }, [currentUser, tickets.length]); // Re-run when user changes or ticket list updates
+  }, [currentUser]); // Re-run when user changes
 
   const createTicket = async (data: Partial<Ticket>) => {
     if (!currentUser) return;
@@ -245,7 +283,21 @@ export const RealtimeProvider = ({ children }: { children: ReactNode }) => {
       customer_id: currentUser.id,
       customer_name: currentUser.full_name || currentUser.email || 'Anonymous'
     };
-    await axios.post('/api/tickets', ticketData);
+    const response = await axios.post('/api/tickets', ticketData);
+    
+    // Store ticket ID in localStorage for guest access
+    if (!currentUser) {
+      const guestTickets = JSON.parse(localStorage.getItem('bitnexus_guest_tickets') || '[]');
+      guestTickets.push(response.data.id);
+      localStorage.setItem('bitnexus_guest_tickets', JSON.stringify(guestTickets));
+    }
+    if (currentUser?.role === 'customer' && wallet && wallet.balance >= (data.amount || 0)) {
+      await axios.post('/api/wallet/deduct', {
+        userId: currentUser.id,
+        amount: data.amount,
+        ticketId: response.data.id
+      });
+    }
   };
 
   const updateTicket = async (id: string, data: Partial<Ticket>) => {
@@ -286,6 +338,7 @@ export const RealtimeProvider = ({ children }: { children: ReactNode }) => {
       transactions,
       messages,
       currentUser,
+      wallet,
       createTicket, 
       updateTicket, 
       createTechnician,
