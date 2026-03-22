@@ -1,8 +1,8 @@
 -- BitNexus Database Schema (Updated)
 
--- 1. Profiles (Linked to Supabase Auth)
+-- 1. Profiles (Linked to Auth)
 CREATE TABLE IF NOT EXISTS profiles (
-  id UUID REFERENCES auth.users ON DELETE CASCADE PRIMARY KEY,
+  id TEXT PRIMARY KEY, -- Changed from UUID to TEXT to support Firebase IDs
   full_name TEXT,
   phone TEXT UNIQUE,
   role TEXT CHECK (role IN ('customer', 'worker', 'admin')),
@@ -23,7 +23,7 @@ CREATE TABLE IF NOT EXISTS technicians (
 -- 3. Tickets (Service Requests)
 CREATE TABLE IF NOT EXISTS tickets (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-  customer_id UUID REFERENCES auth.users(id),
+  customer_id TEXT, -- Changed from UUID to TEXT to support Firebase IDs
   customer_name TEXT NOT NULL,
   service TEXT NOT NULL,
   description TEXT,
@@ -50,7 +50,7 @@ CREATE TABLE IF NOT EXISTS transactions (
 CREATE TABLE IF NOT EXISTS messages (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
   ticket_id UUID REFERENCES tickets(id),
-  sender_id UUID REFERENCES auth.users(id),
+  sender_id TEXT, -- Changed from UUID to TEXT
   text TEXT NOT NULL,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now())
 );
@@ -58,7 +58,7 @@ CREATE TABLE IF NOT EXISTS messages (
 -- 6. Wallets
 CREATE TABLE IF NOT EXISTS wallets (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-  user_id UUID REFERENCES auth.users(id) UNIQUE,
+  user_id TEXT UNIQUE, -- Changed from UUID to TEXT
   balance DECIMAL(12, 2) DEFAULT 0.00,
   currency TEXT DEFAULT 'NGN',
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now())

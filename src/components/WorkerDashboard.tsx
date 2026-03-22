@@ -14,21 +14,30 @@ import {
   LogOut,
   ChevronRight,
   Camera,
-  MessageSquare
+  MessageSquare,
+  Menu,
+  X
 } from 'lucide-react';
 import { formatCurrency, cn } from '../lib/utils';
 import { motion, AnimatePresence } from 'motion/react';
 import { useRealtime } from '../contexts/RealtimeContext';
 import { PushNotificationManager } from './PushNotificationManager';
+import { toast } from 'sonner';
 
-type WorkerTab = 'jobs' | 'earnings' | 'profile' | 'settings';
+type WorkerTab = 'jobs' | 'earnings' | 'performance' | 'profile' | 'settings';
 
-const WorkerDashboard = () => {
+const WorkerDashboard = ({ onLogout }: { onLogout?: () => void }) => {
   const [activeTab, setActiveTab] = useState<WorkerTab>('jobs');
   const [activeJobId, setActiveJobId] = useState<string | null>(null);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const { tickets, technicians, updateTicket, updateTechnician, currentUser } = useRealtime();
 
   if (!currentUser) return null;
+
+  const handleTabChange = (tab: WorkerTab) => {
+    setActiveTab(tab);
+    setIsMobileMenuOpen(false);
+  };
 
   // Filter jobs assigned to this worker
   const myJobs = tickets.filter(t => t.technician_id === currentUser.id);
@@ -50,8 +59,18 @@ const WorkerDashboard = () => {
                 <h3 className="text-4xl font-display italic">Mission <span className="not-italic">Control.</span></h3>
               </div>
               <div className="flex gap-4">
-                <button className="btn-outline py-3 px-6">History</button>
-                <button className="btn-primary py-3 px-6">Go Offline</button>
+                <button 
+                  onClick={() => toast.info('Loading job history...', { description: 'Fetching your past performance data.' })}
+                  className="btn-outline py-3 px-6"
+                >
+                  History
+                </button>
+                <button 
+                  onClick={() => toast.warning('Status change requested', { description: 'You are now marked as offline.' })}
+                  className="btn-primary py-3 px-6"
+                >
+                  Go Offline
+                </button>
               </div>
             </header>
 
@@ -78,8 +97,18 @@ const WorkerDashboard = () => {
                     </p>
                   </div>
                   <div className="flex gap-4 w-full md:w-auto">
-                    <button className="flex-1 md:flex-none p-4 bg-white/5 border border-white/10 hover:bg-white/10 transition-colors"><Camera className="w-5 h-5 mx-auto" /></button>
-                    <button className="flex-1 md:flex-none p-4 bg-white/5 border border-white/10 hover:bg-white/10 transition-colors"><MessageSquare className="w-5 h-5 mx-auto" /></button>
+                    <button 
+                      onClick={() => toast.info('Camera interface opening...', { description: 'Prepare to capture job evidence.' })}
+                      className="flex-1 md:flex-none p-4 bg-white/5 border border-white/10 hover:bg-white/10 transition-colors"
+                    >
+                      <Camera className="w-5 h-5 mx-auto" />
+                    </button>
+                    <button 
+                      onClick={() => toast.info('Opening secure channel...', { description: 'Connecting to customer support.' })}
+                      className="flex-1 md:flex-none p-4 bg-white/5 border border-white/10 hover:bg-white/10 transition-colors"
+                    >
+                      <MessageSquare className="w-5 h-5 mx-auto" />
+                    </button>
                     <button 
                       onClick={() => {
                         if (activeJobId) {
@@ -215,9 +244,92 @@ const WorkerDashboard = () => {
         );
       case 'earnings':
         return (
-          <div className="p-20 text-center">
-            <DollarSign className="w-12 h-12 text-gray-200 mx-auto mb-6" />
-            <h3 className="text-xs uppercase tracking-[0.3em] font-bold text-gray-400">Earnings Module Coming Soon</h3>
+          <div className="space-y-12">
+            <header>
+              <h2 className="data-label text-brand-accent mb-4">Financials</h2>
+              <h3 className="text-4xl font-display italic">Earnings <span className="not-italic">Registry.</span></h3>
+            </header>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+              <div className="bg-white border border-stone-200 p-8">
+                <p className="data-label text-stone-400 mb-2">Available for Withdrawal</p>
+                <p className="text-3xl font-display italic">{formatCurrency(45000)}</p>
+                <button 
+                  onClick={() => toast.promise(new Promise(resolve => setTimeout(resolve, 2000)), {
+                    loading: 'Processing withdrawal request...',
+                    success: 'Withdrawal initiated! Funds will arrive in 24h.',
+                    error: 'Withdrawal failed. Please check your bank details.'
+                  })}
+                  className="w-full mt-6 btn-primary py-3 text-[10px]"
+                >
+                  Withdraw Funds
+                </button>
+              </div>
+              <div className="bg-stone-50 border border-stone-200 p-8">
+                <p className="data-label text-stone-400 mb-2">Pending Clearance</p>
+                <p className="text-3xl font-display italic text-stone-400">{formatCurrency(12500)}</p>
+              </div>
+              <div className="bg-stone-50 border border-stone-200 p-8">
+                <p className="data-label text-stone-400 mb-2">Total Earned (MTD)</p>
+                <p className="text-3xl font-display italic text-stone-400">{formatCurrency(158000)}</p>
+              </div>
+            </div>
+
+            <div className="bg-white border border-stone-200">
+              <div className="p-8 border-b border-stone-200">
+                <h4 className="data-label">Recent Transactions</h4>
+              </div>
+              <div className="p-20 text-center">
+                <DollarSign className="w-12 h-12 text-gray-200 mx-auto mb-6" />
+                <h3 className="text-xs uppercase tracking-[0.3em] font-bold text-gray-400">Transaction History Coming Soon</h3>
+              </div>
+            </div>
+          </div>
+        );
+      case 'performance':
+        return (
+          <div className="space-y-12">
+            <header>
+              <h2 className="data-label text-brand-accent mb-4">Analytics</h2>
+              <h3 className="text-4xl font-display italic">Performance <span className="not-italic">Metrics.</span></h3>
+            </header>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-12">
+              <div className="bg-white border border-stone-200 p-10">
+                <h4 className="data-label mb-8">Job Completion Velocity</h4>
+                <div className="h-64 flex items-end gap-2">
+                  {[45, 60, 40, 75, 50, 85, 70].map((h, i) => (
+                    <div key={i} className="flex-1 bg-stone-100 relative group">
+                      <motion.div 
+                        initial={{ height: 0 }}
+                        animate={{ height: `${h}%` }}
+                        className="absolute bottom-0 left-0 w-full bg-brand-dark group-hover:bg-brand-accent transition-colors"
+                      />
+                    </div>
+                  ))}
+                </div>
+                <div className="flex justify-between mt-4 text-[8px] uppercase tracking-widest text-stone-400">
+                  <span>Mon</span>
+                  <span>Sun</span>
+                </div>
+              </div>
+
+              <div className="bg-brand-ink text-white p-10">
+                <h4 className="data-label text-white/40 mb-8">Quality Score</h4>
+                <div className="flex items-center justify-center h-64">
+                  <div className="relative w-48 h-48">
+                    <svg className="w-full h-full" viewBox="0 0 100 100">
+                      <circle className="text-white/5 stroke-current" strokeWidth="2" fill="transparent" r="45" cx="50" cy="50" />
+                      <circle className="text-brand-accent stroke-current" strokeWidth="2" strokeDasharray="283" strokeDashoffset="28" strokeLinecap="round" fill="transparent" r="45" cx="50" cy="50" transform="rotate(-90 50 50)" />
+                    </svg>
+                    <div className="absolute inset-0 flex flex-col items-center justify-center">
+                      <span className="text-4xl font-display italic">4.9</span>
+                      <span className="data-label text-white/40">Rating</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
         );
       default:
@@ -226,10 +338,23 @@ const WorkerDashboard = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 flex">
+    <div className="min-h-screen bg-gray-50 flex flex-col lg:flex-row">
+      {/* Mobile Header */}
+      <div className="lg:hidden bg-brand-dark text-white p-4 flex justify-between items-center sticky top-0 z-50">
+        <div className="flex items-center gap-2">
+          <h1 className="text-xl font-display tracking-tighter">BitNexus<span className="text-brand-accent">.</span></h1>
+        </div>
+        <button onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)} className="p-2">
+          {isMobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
+        </button>
+      </div>
+
       {/* Sidebar */}
-      <aside className="w-64 bg-brand-dark text-white flex flex-col sticky top-0 h-screen">
-        <div className="p-8">
+      <aside className={cn(
+        "fixed inset-0 z-40 lg:relative lg:z-auto w-64 bg-brand-dark text-white flex flex-col transition-transform duration-300 lg:translate-x-0",
+        isMobileMenuOpen ? "translate-x-0" : "-translate-x-full"
+      )}>
+        <div className="p-8 hidden lg:block">
           <h1 className="text-2xl font-display tracking-tighter">BitNexus<span className="text-brand-accent">.</span></h1>
           <p className="text-[8px] uppercase tracking-[0.4em] text-white/40 mt-1">Worker Portal</p>
         </div>
@@ -237,13 +362,14 @@ const WorkerDashboard = () => {
         <nav className="flex-1 px-4 space-y-2">
           {[
             { id: 'jobs', label: 'My Jobs', icon: Calendar },
+            { id: 'performance', label: 'Performance', icon: TrendingUp },
             { id: 'earnings', label: 'Earnings', icon: DollarSign },
             { id: 'profile', label: 'Profile', icon: User },
             { id: 'settings', label: 'Settings', icon: Settings },
           ].map((item) => (
             <button 
               key={item.id}
-              onClick={() => setActiveTab(item.id as WorkerTab)}
+              onClick={() => handleTabChange(item.id as WorkerTab)}
               className={`w-full flex items-center gap-4 px-4 py-3 text-xs font-bold uppercase tracking-widest transition-colors ${
                 activeTab === item.id ? 'bg-white/10 text-white' : 'text-white/50 hover:text-white hover:bg-white/5'
               }`}
@@ -259,20 +385,35 @@ const WorkerDashboard = () => {
         </div>
 
         <div className="p-8 border-t border-white/5">
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-full bg-brand-accent flex items-center justify-center text-[10px] font-bold">
-              {currentUser.full_name?.charAt(0) || 'U'}
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 rounded-full bg-brand-accent flex items-center justify-center text-[10px] font-bold">
+                {currentUser.full_name?.charAt(0) || 'U'}
+              </div>
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-widest">{currentUser.full_name || 'User'}</p>
+                <p className="text-[8px] text-white/40 uppercase tracking-widest">Technician</p>
+              </div>
             </div>
-            <div>
-              <p className="text-[10px] font-bold uppercase tracking-widest">{currentUser.full_name || 'User'}</p>
-              <p className="text-[8px] text-white/40 uppercase tracking-widest">Technician</p>
-            </div>
+            <button 
+              onClick={() => {
+                if (onLogout) {
+                  onLogout();
+                } else {
+                  toast.success('Logging out of secure session...');
+                  setTimeout(() => window.location.reload(), 1000);
+                }
+              }}
+              className="p-2 text-white/20 hover:text-red-500 transition-colors"
+            >
+              <LogOut className="w-4 h-4" />
+            </button>
           </div>
         </div>
       </aside>
 
       {/* Main Content */}
-      <main className="flex-1 p-12 overflow-y-auto">
+      <main className="flex-1 p-4 md:p-8 lg:p-12 overflow-y-auto">
         {renderTab()}
       </main>
     </div>

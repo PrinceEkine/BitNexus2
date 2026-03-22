@@ -13,20 +13,73 @@ import {
   Smartphone,
   Package,
   Maximize2,
-  X
+  X,
+  LogOut,
+  ShoppingBag as ShopIcon,
+  Home as HomeIcon,
+  Calendar as CalendarIcon
 } from 'lucide-react';
 import { useRealtime } from '../contexts/RealtimeContext';
 import { useCurrency, CurrencyCode } from '../contexts/CurrencyContext';
 import { cn, formatCurrency } from '../lib/utils';
 import Logo from './Logo';
 import axios from 'axios';
+import { toast } from 'sonner';
 import { PushNotificationManager } from './PushNotificationManager';
 
-const SuperAppHub = ({ userId }: { userId: string }) => {
-  const { tickets, wallet } = useRealtime();
+const SuperAppHub = ({ userId, onNavigate }: { userId: string, onNavigate?: (view: any) => void }) => {
+  const { tickets, wallet, currentUser, logout } = useRealtime();
   const { currency, setCurrency, convert } = useCurrency();
   const [loading, setLoading] = useState(false);
   const [activeSubApp, setActiveSubApp] = useState<string | null>(null);
+
+  const handleLogout = async () => {
+    const toastId = toast.loading('Signing out...');
+    try {
+      await logout();
+      toast.success('Logged out successfully.', { id: toastId });
+    } catch (err) {
+      console.error("Logout error in Hub", err);
+      toast.error('Logout encountered an issue, but session was cleared.', { id: toastId });
+    } finally {
+      if (onNavigate) onNavigate('landing');
+      setTimeout(() => toast.dismiss(toastId), 3000);
+    }
+  };
+
+  const handleTopUp = async () => {
+    if (!currentUser) return;
+    setLoading(true);
+    const promise = axios.post('/api/paystack/initialize', {
+      email: currentUser.email,
+      amount: 5000,
+      metadata: {
+        custom_fields: [
+          { display_name: "User ID", variable_name: "user_id", value: currentUser.id },
+          { display_name: "Payment Type", variable_name: "type", value: 'wallet_topup' }
+        ]
+      }
+    });
+
+    toast.promise(promise, {
+      loading: 'Initializing secure payment...',
+      success: (res) => {
+        if (res.data.status) {
+          window.location.href = res.data.data.authorization_url;
+          return 'Redirecting to payment gateway...';
+        }
+        throw new Error('Payment initialization failed');
+      },
+      error: 'Could not connect to payment provider',
+      finally: () => setLoading(false)
+    });
+  };
+
+  const handleQuickAction = (action: string) => {
+    toast.info(`${action} is coming soon to the Nexus ecosystem!`, {
+      description: "We're working on expanding our integrated services."
+    });
+  };
 
   const subApps = [
     { id: 'inventory', name: 'StockBit Pro', desc: 'Inventory Management', icon: Package, url: 'https://stockbitpro.netlify.app/' },
@@ -40,7 +93,7 @@ const SuperAppHub = ({ userId }: { userId: string }) => {
     : 0;
 
   return (
-    <div className="min-h-screen bg-stone-50 pt-32 pb-20 px-6">
+    <div className="min-h-screen bg-stone-50 pt-24 md:pt-32 pb-20 px-4 md:px-6">
       <AnimatePresence>
         {activeSubApp && (
           <motion.div 
@@ -74,20 +127,20 @@ const SuperAppHub = ({ userId }: { userId: string }) => {
 
       <div className="max-w-7xl mx-auto">
         {/* Header Section */}
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-8 mb-12">
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 md:gap-8 mb-8 md:mb-12">
           <div className="flex items-center gap-4">
-            <Logo className="w-12 h-12" variant="dark" />
+            <Logo className="w-10 h-10 md:w-12 md:h-12" variant="dark" />
             <div>
-              <h1 className="text-4xl font-display tracking-tighter text-brand-dark mb-2">
+              <h1 className="text-2xl md:text-4xl font-display tracking-tighter text-brand-dark mb-1 md:mb-2">
                 The Nexus Hub<span className="text-brand-accent">.</span>
               </h1>
-              <p className="text-[10px] uppercase tracking-[0.3em] font-bold text-gray-400">
+              <p className="text-[8px] md:text-[10px] uppercase tracking-[0.3em] font-bold text-gray-400">
                 Your Unified Service Ecosystem
               </p>
             </div>
           </div>
           
-          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-3 md:gap-4 w-full md:w-auto justify-between md:justify-end">
             {/* Currency Selector */}
             <div className="flex bg-white border border-stone-200 rounded-full p-1">
               {(['NGN', 'USD', 'EUR', 'GBP'] as CurrencyCode[]).map((c) => (
@@ -95,7 +148,7 @@ const SuperAppHub = ({ userId }: { userId: string }) => {
                   key={c}
                   onClick={() => setCurrency(c)}
                   className={cn(
-                    "px-3 py-1 text-[8px] font-bold uppercase tracking-widest rounded-full transition-all",
+                    "px-2 md:px-3 py-1 text-[7px] md:text-[8px] font-bold uppercase tracking-widest rounded-full transition-all",
                     currency === c ? "bg-brand-dark text-white" : "text-gray-400 hover:text-brand-dark"
                   )}
                 >
@@ -103,11 +156,23 @@ const SuperAppHub = ({ userId }: { userId: string }) => {
                 </button>
               ))}
             </div>
-            <button className="w-10 h-10 bg-white border border-stone-200 rounded-full flex items-center justify-center text-gray-400 hover:text-brand-dark transition-colors">
-              <Settings className="w-4 h-4" />
-            </button>
-            <div className="w-10 h-10 bg-brand-dark text-white rounded-full flex items-center justify-center text-xs font-bold">
-              JD
+            <div className="flex items-center gap-3">
+              <button 
+                onClick={() => handleQuickAction('Settings')}
+                className="w-9 h-9 md:w-10 md:h-10 bg-white border border-stone-200 rounded-full flex items-center justify-center text-gray-400 hover:text-brand-dark transition-colors"
+              >
+                <Settings className="w-4 h-4" />
+              </button>
+              <button 
+                onClick={handleLogout}
+                className="w-9 h-9 md:w-10 md:h-10 bg-white border border-stone-200 rounded-full flex items-center justify-center text-gray-400 hover:text-red-500 transition-colors"
+                title="Logout"
+              >
+                <LogOut className="w-4 h-4" />
+              </button>
+              <div className="w-9 h-9 md:w-10 md:h-10 bg-brand-dark text-white rounded-full flex items-center justify-center text-[10px] md:text-xs font-bold">
+                {currentUser?.full_name?.split(' ').map(n => n[0]).join('').toUpperCase() || 'JD'}
+              </div>
             </div>
           </div>
         </div>
@@ -130,7 +195,10 @@ const SuperAppHub = ({ userId }: { userId: string }) => {
                 <div className="w-12 h-12 bg-white/10 backdrop-blur-xl rounded-2xl flex items-center justify-center">
                   <Wallet className="w-6 h-6 text-brand-accent" />
                 </div>
-                <button className="text-[10px] font-bold uppercase tracking-widest text-white/40 hover:text-white flex items-center gap-2">
+                <button 
+                  onClick={() => handleQuickAction('Wallet History')}
+                  className="text-[10px] font-bold uppercase tracking-widest text-white/40 hover:text-white flex items-center gap-2"
+                >
                   History <ArrowUpRight className="w-3 h-3" />
                 </button>
               </div>
@@ -142,18 +210,27 @@ const SuperAppHub = ({ userId }: { userId: string }) => {
                 </h2>
               </div>
 
-              <button className="w-full bg-brand-accent text-white py-4 rounded-2xl text-[10px] font-bold uppercase tracking-[0.2em] hover:bg-white hover:text-brand-dark transition-all flex items-center justify-center gap-2">
-                <Plus className="w-4 h-4" /> Top Up Wallet
+              <button 
+                onClick={handleTopUp}
+                disabled={loading}
+                className="w-full bg-brand-accent text-white py-4 rounded-2xl text-[10px] font-bold uppercase tracking-[0.2em] hover:bg-white hover:text-brand-dark transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {loading ? (
+                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                ) : (
+                  <Plus className="w-4 h-4" />
+                )}
+                Top Up Wallet
               </button>
             </motion.div>
 
             {/* Quick Services Grid */}
             <div className="grid grid-cols-2 gap-4">
               {[
-                { label: 'Book Pro', icon: Zap, color: 'bg-amber-50 text-amber-600', action: () => {} },
+                { label: 'Pro Booking', icon: CalendarIcon, color: 'bg-amber-50 text-amber-600', action: () => onNavigate?.('booking') },
                 { label: 'Inventory', icon: Package, color: 'bg-blue-50 text-blue-600', action: () => setActiveSubApp('https://stockbitpro.netlify.app/') },
-                { label: 'Shop Parts', icon: ShoppingBag, color: 'bg-emerald-50 text-emerald-600', action: () => {} },
-                { label: 'Smart Home', icon: Smartphone, color: 'bg-purple-50 text-purple-600', action: () => {} }
+                { label: 'Shop Parts', icon: ShopIcon, color: 'bg-emerald-50 text-emerald-600', action: () => handleQuickAction('Nexus Store') },
+                { label: 'Smart Home', icon: HomeIcon, color: 'bg-purple-50 text-purple-600', action: () => handleQuickAction('Smart Home Controls') }
               ].map((action) => (
                 <button 
                   key={action.label}
@@ -184,7 +261,10 @@ const SuperAppHub = ({ userId }: { userId: string }) => {
                 <div className="py-20 text-center border-2 border-dashed border-stone-100 rounded-3xl">
                   <Clock className="w-8 h-8 text-stone-200 mx-auto mb-4" />
                   <p className="text-[10px] uppercase tracking-widest text-stone-400 font-bold">No active services</p>
-                  <button className="text-[10px] text-brand-accent uppercase tracking-widest font-bold mt-2 hover:underline">
+                  <button 
+                    onClick={() => handleQuickAction('Maintenance Scheduling')}
+                    className="text-[10px] text-brand-accent uppercase tracking-widest font-bold mt-2 hover:underline"
+                  >
                     Schedule a maintenance
                   </button>
                 </div>
@@ -206,7 +286,10 @@ const SuperAppHub = ({ userId }: { userId: string }) => {
                           <p className="text-[10px] font-bold uppercase tracking-widest text-brand-dark mb-1">{ticket.status}</p>
                           <p className="text-[8px] text-stone-400 uppercase tracking-widest">Last updated 2h ago</p>
                         </div>
-                        <button className="w-10 h-10 bg-white rounded-full flex items-center justify-center text-stone-400 group-hover:text-brand-dark transition-colors">
+                        <button 
+                          onClick={() => handleQuickAction('Service Details')}
+                          className="w-10 h-10 bg-white rounded-full flex items-center justify-center text-stone-400 group-hover:text-brand-dark transition-colors"
+                        >
                           <ArrowUpRight className="w-4 h-4" />
                         </button>
                       </div>
@@ -221,30 +304,34 @@ const SuperAppHub = ({ userId }: { userId: string }) => {
               <div className="bg-brand-accent rounded-[2rem] p-8 text-white flex flex-col justify-between h-64 relative overflow-hidden">
                 <div className="absolute top-0 right-0 w-48 h-48 bg-white/10 rounded-full -mr-24 -mt-24 blur-3xl" />
                 <div>
-                  <h3 className="text-2xl font-display tracking-tighter mb-2">Nexus Store</h3>
-                  <p className="text-[10px] uppercase tracking-widest text-white/60 font-bold">Certified Parts & Accessories</p>
+                  <h3 className="text-2xl font-display tracking-tighter mb-2">Nexus Shop</h3>
+                  <p className="text-[10px] uppercase tracking-widest text-white/60 font-bold">Certified Parts & Smart Home Gear</p>
                 </div>
-                <button className="bg-white text-brand-dark py-4 px-8 rounded-2xl text-[10px] font-bold uppercase tracking-widest self-start hover:bg-brand-dark hover:text-white transition-all">
-                  Browse Catalog
+                <button 
+                  onClick={() => handleQuickAction('Nexus Store Catalog')}
+                  className="bg-white text-brand-dark py-4 px-8 rounded-2xl text-[10px] font-bold uppercase tracking-widest self-start hover:bg-brand-dark hover:text-white transition-all"
+                >
+                  Shop Parts
                 </button>
               </div>
 
               <div className="bg-white border border-stone-200 rounded-[2rem] p-8 flex flex-col justify-between h-64">
                 <div className="flex items-center gap-3 mb-4">
-                  <div className="w-8 h-8 bg-emerald-50 rounded-lg flex items-center justify-center">
-                    <ShieldCheck className="w-4 h-4 text-emerald-600" />
+                  <div className="w-8 h-8 bg-purple-50 rounded-lg flex items-center justify-center">
+                    <Smartphone className="w-4 h-4 text-purple-600" />
                   </div>
-                  <h3 className="text-[10px] font-bold uppercase tracking-widest text-brand-dark">Nexus Protection</h3>
+                  <h3 className="text-[10px] font-bold uppercase tracking-widest text-brand-dark">Smart Home Hub</h3>
                 </div>
                 <p className="text-xs text-stone-500 font-light leading-relaxed">
-                  Get extended warranty and 24/7 priority support for all your home appliances.
+                  Connect and control your smart appliances directly from the Nexus ecosystem.
                 </p>
                 <div className="flex justify-between items-center mt-6">
-                  <p className="text-lg font-display tracking-tighter text-brand-dark">
-                    {formatCurrency(convert(5000, 'NGN', currency), currency)}
-                    <span className="text-[10px] text-stone-400 font-sans font-bold uppercase tracking-widest ml-1">/mo</span>
-                  </p>
-                  <button className="text-[10px] font-bold uppercase tracking-widest text-brand-accent hover:underline">Learn More</button>
+                  <button 
+                    onClick={() => handleQuickAction('Smart Home Setup')}
+                    className="text-[10px] font-bold uppercase tracking-widest text-brand-accent hover:underline"
+                  >
+                    Configure Devices
+                  </button>
                 </div>
               </div>
             </div>

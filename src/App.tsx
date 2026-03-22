@@ -7,18 +7,23 @@ import CustomerDashboard from './components/CustomerDashboard';
 import AdminDashboard from './components/AdminDashboard';
 import WorkerDashboard from './components/WorkerDashboard';
 import AdminSignupPage from './components/AdminSignupPage';
+import AdminPortal from './components/AdminPortal';
 import AuthModal from './components/AuthModal';
 import InstallPrompt from './components/InstallPrompt';
 import SuperAppHub from './components/SuperAppHub';
 import Logo from './components/Logo';
 import UpdatePasswordPage from './components/UpdatePasswordPage';
+import AboutPage from './components/AboutPage';
+import HelpPage from './components/HelpPage';
+import TermsPage from './components/TermsPage';
+import PrivacyPage from './components/PrivacyPage';
 import { Menu, X, User, LogOut, Wallet } from 'lucide-react';
+import { Toaster, toast } from 'sonner';
 import { cn } from './lib/utils';
 import { RealtimeProvider, useRealtime } from './contexts/RealtimeContext';
 import { CurrencyProvider } from './contexts/CurrencyContext';
-import { supabase } from './lib/supabase';
 
-type View = 'landing' | 'booking' | 'dashboard' | 'admin' | 'worker' | 'admin-signup' | 'hub' | 'update-password';
+type View = 'landing' | 'booking' | 'dashboard' | 'admin' | 'worker' | 'admin-signup' | 'hub' | 'update-password' | 'about' | 'help' | 'terms' | 'privacy' | 'admin-portal';
 
 export default function App() {
   return (
@@ -31,7 +36,7 @@ export default function App() {
 }
 
 function AppContent() {
-  const { currentUser, tickets } = useRealtime();
+  const { currentUser, tickets, logout } = useRealtime();
   const [currentView, setCurrentView] = useState<View>('landing');
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [authModal, setAuthModal] = useState<{ isOpen: boolean; type: 'login' | 'signup' }>({
@@ -56,9 +61,18 @@ function AppContent() {
   }, [isLoggedIn, userRole]);
 
   const handleLogout = async () => {
-    await supabase.auth.signOut();
-    localStorage.removeItem('bitnexus_user');
-    setCurrentView('landing');
+    const toastId = toast.loading('Signing out of your secure session...');
+    try {
+      await logout();
+      toast.success('You have been successfully logged out.', { id: toastId });
+    } catch (err) {
+      console.error("Logout error in App", err);
+      toast.error('There was an issue signing out, but we have cleared your local session.', { id: toastId });
+    } finally {
+      setCurrentView('landing');
+      // Ensure toast disappears after a delay
+      setTimeout(() => toast.dismiss(toastId), 3000);
+    }
   };
 
   useEffect(() => {
@@ -109,18 +123,34 @@ function AppContent() {
       case 'dashboard':
         return <CustomerDashboard onBookNow={() => setCurrentView('booking')} />;
       case 'hub':
-        return <SuperAppHub userId={currentUser?.id || 'anonymous'} />;
+        return <SuperAppHub userId={currentUser?.id || 'anonymous'} onNavigate={setCurrentView} />;
       case 'admin':
-        return <AdminDashboard />;
+        return <AdminDashboard onLogout={handleLogout} />;
       case 'worker':
-        return <WorkerDashboard />;
+        return <WorkerDashboard onLogout={handleLogout} />;
       case 'admin-signup':
-        return <AdminSignupPage onBack={() => setCurrentView('landing')} />;
+        return <AdminSignupPage onBack={() => setCurrentView('admin-portal')} />;
+      case 'admin-portal':
+        return (
+          <AdminPortal 
+            onBack={() => setCurrentView('landing')} 
+            onLogin={() => setAuthModal({ isOpen: true, type: 'login' })}
+            onSignup={() => setCurrentView('admin-signup')}
+          />
+        );
       case 'update-password':
         return <UpdatePasswordPage onComplete={() => {
           window.location.hash = '';
           setCurrentView('landing');
         }} />;
+      case 'about':
+        return <AboutPage onBack={() => setCurrentView('landing')} />;
+      case 'help':
+        return <HelpPage onBack={() => setCurrentView('landing')} />;
+      case 'terms':
+        return <TermsPage onBack={() => setCurrentView('landing')} />;
+      case 'privacy':
+        return <PrivacyPage onBack={() => setCurrentView('landing')} />;
       default:
         return <LandingPage onBookNow={() => setCurrentView('booking')} />;
     }
@@ -145,6 +175,7 @@ function AppContent() {
 
   return (
     <div className="relative font-sans">
+      <Toaster position="top-center" expand={true} richColors />
       {activeGuestTicket && (
         <ChatWidget 
           ticketId={activeGuestTicket.id}
@@ -230,7 +261,7 @@ function AppContent() {
             ) : (
               <div className="flex items-center gap-6">
                 <button 
-                  onClick={() => setAuthModal({ isOpen: true, type: 'login' })}
+                  onClick={() => setCurrentView('admin-portal')}
                   className={cn(
                     "text-[10px] font-bold uppercase tracking-[0.2em] transition-colors duration-500",
                     (currentView === 'landing' && !isScrolled) ? "text-white/50 hover:text-white" : "text-gray-400 hover:text-brand-dark"
@@ -299,11 +330,22 @@ function AppContent() {
                       setIsMenuOpen(false);
                     }
                   }}
-                  className="block text-4xl font-display hover:text-brand-accent transition-colors"
+                  className="block text-4xl font-display hover:text-brand-accent transition-colors text-left"
                 >
                   {item.label}
                 </button>
               ))}
+              {isLoggedIn && (
+                <button 
+                  onClick={() => {
+                    handleLogout();
+                    setIsMenuOpen(false);
+                  }}
+                  className="block text-4xl font-display text-red-500 hover:text-red-400 transition-colors text-left"
+                >
+                  Logout
+                </button>
+              )}
             </div>
           </motion.div>
         )}
@@ -333,29 +375,37 @@ function AppContent() {
                 <Logo className="w-12 h-12" variant="light" />
                 <h2 className="text-3xl font-display">BitNexus<span className="text-brand-accent">.</span></h2>
               </div>
-              <p className="text-white/40 font-light max-w-sm leading-relaxed">
+              <p className="text-white/40 font-light max-w-sm leading-relaxed mb-8">
                 BitNexus is the all-in-one platform designed to bring order to your daily life. At the nexus of service and technology, we empower you to manage your home with precision and ease.
               </p>
+              <div className="space-y-2">
+                <p className="text-[10px] uppercase tracking-widest text-white/20">Contact Support</p>
+                <p className="text-sm font-light text-white/60">dagogoekineprince@gmail.com</p>
+                <p className="text-sm font-light text-white/60">Call: 07010698264</p>
+                <p className="text-sm font-light text-white/60">WhatsApp: 07072127949</p>
+              </div>
             </div>
             <div>
               <h4 className="text-[10px] uppercase tracking-[0.3em] font-bold text-white/30 mb-6">Platform</h4>
               <ul className="space-y-4 text-sm font-light text-white/60">
-                <li><button className="hover:text-white transition-colors">Services</button></li>
-                <li><button className="hover:text-white transition-colors">Technicians</button></li>
-                <li><button className="hover:text-white transition-colors">Pricing</button></li>
+                <li><button onClick={() => scrollToSection('services')} className="hover:text-white transition-colors">Services</button></li>
+                <li><button onClick={() => scrollToSection('how-it-works')} className="hover:text-white transition-colors">How it Works</button></li>
+                <li><button onClick={() => scrollToSection('pricing')} className="hover:text-white transition-colors">Pricing</button></li>
+                <li><button onClick={() => setCurrentView('help')} className="hover:text-white transition-colors">Help Center</button></li>
               </ul>
             </div>
             <div>
               <h4 className="text-[10px] uppercase tracking-[0.3em] font-bold text-white/30 mb-6">Company</h4>
               <ul className="space-y-4 text-sm font-light text-white/60">
-                <li><button className="hover:text-white transition-colors">About Us</button></li>
-                <li><button className="hover:text-white transition-colors">Contact</button></li>
-                <li><button onClick={() => setCurrentView('admin-signup')} className="hover:text-brand-accent transition-colors">Admin Portal</button></li>
+                <li><button onClick={() => setCurrentView('about')} className="hover:text-white transition-colors">About Us</button></li>
+                <li><button onClick={() => setCurrentView('terms')} className="hover:text-white transition-colors">Terms of Service</button></li>
+                <li><button onClick={() => setCurrentView('privacy')} className="hover:text-white transition-colors">Privacy Policy</button></li>
+                <li><button onClick={() => setCurrentView('admin-portal')} className="hover:text-brand-accent transition-colors">Admin Portal</button></li>
               </ul>
             </div>
           </div>
           <div className="max-w-7xl mx-auto mt-20 pt-8 border-t border-white/5 flex flex-col md:flex-row justify-between items-center gap-4">
-            <p className="text-[10px] text-white/30 uppercase tracking-widest">© 2023 BitNexus Platform. All rights reserved.</p>
+            <p className="text-[10px] text-white/30 uppercase tracking-widest">© 2026 BitNexus Platform. All rights reserved.</p>
             <div className="flex gap-6">
               {['Twitter', 'Instagram', 'LinkedIn'].map(s => (
                 <button key={s} className="text-[10px] text-white/30 uppercase tracking-widest hover:text-white transition-colors">{s}</button>

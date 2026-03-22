@@ -3,6 +3,7 @@ import { createServer as createViteServer } from "vite";
 import { WebSocketServer, WebSocket } from "ws";
 import { createServer } from "http";
 import { createClient } from "@supabase/supabase-js";
+import axios from "axios";
 import dotenv from "dotenv";
 import nodemailer from "nodemailer";
 
@@ -115,8 +116,6 @@ async function sendEmail(to: string, subject: string, text: string, html?: strin
     console.error("Email Send Error:", error);
   }
 }
-
-import axios from "axios";
 
 async function sendWhatsAppMessage(to: string, text: string) {
   if (!WHATSAPP_TOKEN || !WHATSAPP_PHONE_ID) {
@@ -363,6 +362,8 @@ app.post("/api/tickets", async (req, res) => {
     .insert([{
       customer_id: data.customer_id,
       customer_name: data.customer_name,
+      customer_email: data.customer_email,
+      customer_phone: data.customer_phone,
       service: data.service,
       description: data.description,
       priority: data.priority,
@@ -391,20 +392,35 @@ app.post("/api/tickets", async (req, res) => {
       }
     }
     
-    if (data.paymentRef) {
-      const { data: newTx } = await supabase
-        .from('transactions')
-        .insert([{
-          ticket_id: newTicket.id,
-          amount: newTicket.amount,
-          status: 'escrow',
-          type: 'payment',
-          reference: data.paymentRef
-        }])
-        .select()
-        .single();
-      
-      if (newTx) broadcast({ type: "transaction:new", data: newTx });
+    if (data.paymentRef && data.paymentRef !== 'wallet') {
+      // Verify Paystack payment
+      try {
+        const verifyRes = await axios.get(`https://api.paystack.co/transaction/verify/${data.paymentRef}`, {
+          headers: { Authorization: `Bearer ${PAYSTACK_SECRET_KEY}` }
+        });
+        
+        if (verifyRes.data.status && verifyRes.data.data.status === 'success') {
+          const { data: newTx } = await supabase
+            .from('transactions')
+            .insert([{
+              ticket_id: newTicket.id,
+              amount: newTicket.amount,
+              status: 'escrow',
+              type: 'payment',
+              reference: data.paymentRef
+            }])
+            .select()
+            .single();
+          
+          if (newTx) broadcast({ type: "transaction:new", data: newTx });
+        } else {
+          console.warn(`Paystack verification failed for ref: ${data.paymentRef}`);
+          // Mark ticket as payment pending if verification fails
+          await supabase.from('tickets').update({ status: 'Payment Pending' }).eq('id', newTicket.id);
+        }
+      } catch (err) {
+        console.error("Paystack Verification Error:", err);
+      }
     }
   }
   res.json(newTicket);

@@ -1,6 +1,9 @@
 import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import axios from 'axios';
 import CryptoJS from 'crypto-js';
+import { auth as firebaseAuth, onAuthStateChanged as onFirebaseAuthStateChanged, signOut as firebaseSignOut } from '../lib/firebase';
+import { doc, getDoc } from 'firebase/firestore';
+import { db as firestoreDb } from '../lib/firebase';
 import { supabase } from '../lib/supabase';
 
 // Encryption key (In production, this should be handled more securely)
@@ -22,8 +25,10 @@ const decryptMessage = (ciphertext: string) => {
 
 export interface Ticket {
   id: string;
-  customer_id: string;
+  customer_id: string | null;
   customer_name: string;
+  customer_email?: string;
+  customer_phone?: string;
   service: string;
   status: string;
   priority: string;
@@ -42,6 +47,8 @@ export interface Technician {
   load: number;
   specialty: string;
   phone?: string;
+  rating?: number;
+  jobs_completed?: number;
 }
 
 export interface Transaction {
@@ -77,6 +84,7 @@ interface RealtimeContextType {
   sendMessage: (ticketId: string, senderId: string, text: string) => void;
   endChatSession: (ticketId: string) => void;
   recordPayment: (ticketId: string, amount: number, reference: string) => void;
+  logout: () => Promise<void>;
   isConnected: boolean;
 }
 
@@ -126,22 +134,60 @@ export const RealtimeProvider = ({ children }: { children: ReactNode }) => {
 
     const { data: authListener } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (session?.user) {
-        // Set user immediately from metadata
-        setCurrentUser({ ...session.user, ...session.user.user_metadata });
-        fetchWallet(session.user.id);
+        const user = session.user;
+        setCurrentUser({ ...user, ...user.user_metadata });
+        fetchWallet(user.id);
         
-        // Then fetch full profile
-        supabase.from('profiles').select('*').eq('id', session.user.id).single().then(({ data: profile }) => {
-          if (profile) setCurrentUser(profile);
-        });
-      } else {
+        const { data: profile } = await supabase.from('profiles').select('*').eq('id', user.id).single();
+        if (profile) setCurrentUser(profile);
+      } else if (event === 'SIGNED_OUT') {
         setCurrentUser(null);
         setWallet(null);
       }
     });
 
+    // Firebase Auth Listener
+    const firebaseUnsubscribe = onFirebaseAuthStateChanged(firebaseAuth, async (user) => {
+      if (user) {
+        // Fetch profile from Firestore
+        const userDocRef = doc(firestoreDb, 'users', user.uid);
+        const userDoc = await getDoc(userDocRef);
+        
+        if (userDoc.exists()) {
+          const profile = userDoc.data();
+          setCurrentUser({ ...profile, full_name: profile.fullName });
+          fetchWallet(user.uid);
+        } else {
+          // Fallback if profile not found
+          setCurrentUser({
+            id: user.uid,
+            email: user.email,
+            full_name: user.displayName,
+            role: 'customer'
+          });
+          fetchWallet(user.uid);
+        }
+      } else {
+        // If no Firebase user, check Supabase session (faster than getUser)
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session?.user) {
+          // Check local storage for mock user (WhatsApp)
+          const savedUser = localStorage.getItem('bitnexus_user');
+          if (savedUser) {
+            const u = JSON.parse(savedUser);
+            setCurrentUser(u);
+            fetchWallet(u.id);
+          } else {
+            setCurrentUser(null);
+            setWallet(null);
+          }
+        }
+      }
+    });
+
     return () => {
       authListener.subscription.unsubscribe();
+      firebaseUnsubscribe();
     };
   }, []);
 
@@ -277,11 +323,10 @@ export const RealtimeProvider = ({ children }: { children: ReactNode }) => {
   }, [currentUser]); // Re-run when user changes
 
   const createTicket = async (data: Partial<Ticket>) => {
-    if (!currentUser) return;
     const ticketData = {
       ...data,
-      customer_id: currentUser.id,
-      customer_name: currentUser.full_name || currentUser.email || 'Anonymous'
+      customer_id: currentUser?.id || null,
+      customer_name: currentUser?.full_name || currentUser?.email || 'Guest Customer'
     };
     const response = await axios.post('/api/tickets', ticketData);
     
@@ -291,6 +336,7 @@ export const RealtimeProvider = ({ children }: { children: ReactNode }) => {
       guestTickets.push(response.data.id);
       localStorage.setItem('bitnexus_guest_tickets', JSON.stringify(guestTickets));
     }
+    
     if (currentUser?.role === 'customer' && wallet && wallet.balance >= (data.amount || 0)) {
       await axios.post('/api/wallet/deduct', {
         userId: currentUser.id,
@@ -331,6 +377,34 @@ export const RealtimeProvider = ({ children }: { children: ReactNode }) => {
     await axios.post('/api/transactions', { ticket_id: ticketId, amount, reference, status: 'escrow', type: 'payment' });
   };
 
+  const logout = async () => {
+    try {
+      // Clear state immediately for responsive UI
+      setCurrentUser(null);
+      setWallet(null);
+      localStorage.removeItem('bitnexus_user');
+      
+      // Perform sign outs with a timeout to prevent hanging
+      const signOutPromise = Promise.allSettled([
+        supabase.auth.signOut(),
+        firebaseSignOut(firebaseAuth)
+      ]);
+
+      const timeoutPromise = new Promise((resolve) => setTimeout(resolve, 3000));
+      
+      await Promise.race([signOutPromise, timeoutPromise]);
+      
+      // Final clear just in case
+      localStorage.removeItem('bitnexus_user');
+      setCurrentUser(null);
+      setWallet(null);
+    } catch (err) {
+      console.error("Logout error", err);
+      // Force reload if everything fails
+      window.location.href = '/';
+    }
+  };
+
   return (
     <RealtimeContext.Provider value={{ 
       tickets, 
@@ -347,6 +421,7 @@ export const RealtimeProvider = ({ children }: { children: ReactNode }) => {
       sendMessage,
       endChatSession,
       recordPayment,
+      logout,
       isConnected 
     }}>
       {children}

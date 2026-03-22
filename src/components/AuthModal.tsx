@@ -3,7 +3,11 @@ import { motion, AnimatePresence } from 'motion/react';
 import { LogIn, UserPlus, X, Phone, MessageSquare, ArrowRight, Mail } from 'lucide-react';
 import { cn } from '../lib/utils';
 import Logo from './Logo';
+import { auth as firebaseAuth, googleProvider, signInWithPopup } from '../lib/firebase';
+import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { db as firestoreDb } from '../lib/firebase';
 import { supabase } from '../lib/supabase';
+import { toast } from 'sonner';
 
 const AuthModal = ({ isOpen, onClose, type }: { isOpen: boolean, onClose: () => void, type: 'login' | 'signup' }) => {
   const [view, setView] = React.useState<'login' | 'signup' | 'reset' | 'whatsapp'>('whatsapp');
@@ -63,8 +67,12 @@ const AuthModal = ({ isOpen, onClose, type }: { isOpen: boolean, onClose: () => 
 
       if (!res.ok) throw new Error(data.error);
       setOtpSent(true);
+      toast.success('OTP sent successfully!', {
+        description: `Check your WhatsApp messages for the code sent to ${phone}`
+      });
     } catch (err: any) {
       setError(err.message);
+      toast.error('Failed to send OTP', { description: err.message });
     } finally {
       setLoading(false);
     }
@@ -98,12 +106,16 @@ const AuthModal = ({ isOpen, onClose, type }: { isOpen: boolean, onClose: () => 
       }
 
       setSuccess(true);
+      toast.success('Verification successful!', {
+        description: 'Welcome back to BitNexus.'
+      });
       setTimeout(() => {
         onClose();
         window.location.reload();
       }, 1000);
     } catch (err: any) {
       setError(err.message);
+      toast.error('Verification failed', { description: err.message });
     } finally {
       setLoading(false);
     }
@@ -122,27 +134,14 @@ const AuthModal = ({ isOpen, onClose, type }: { isOpen: boolean, onClose: () => 
 
       if (error) throw error;
 
-      if (!data.user?.email_confirmed_at) {
-        setError(
-          <div className="flex flex-col gap-2">
-            <span>Please verify your email address before logging in.</span>
-            <button 
-              onClick={handleResendVerification}
-              className="text-brand-accent hover:underline text-left"
-            >
-              Resend verification email?
-            </button>
-          </div>
-        );
-        return;
-      }
-
       setSuccess(true);
+      toast.success('Login successful!', { description: 'Welcome back.' });
       setTimeout(() => {
         onClose();
       }, 1000);
     } catch (err: any) {
       setError(err.message);
+      toast.error('Login failed', { description: err.message });
     } finally {
       setLoading(false);
     }
@@ -174,8 +173,12 @@ const AuthModal = ({ isOpen, onClose, type }: { isOpen: boolean, onClose: () => 
       if (!response.ok) throw new Error(data.error || 'Signup failed');
 
       setSuccess(true);
+      toast.success('Account created!', {
+        description: 'Please check your email for a verification link.'
+      });
     } catch (err: any) {
       setError(err.message);
+      toast.error('Signup failed', { description: err.message });
     } finally {
       setLoading(false);
     }
@@ -185,15 +188,49 @@ const AuthModal = ({ isOpen, onClose, type }: { isOpen: boolean, onClose: () => 
     setLoading(true);
     setError(null);
     try {
-      const { error } = await supabase.auth.signInWithOAuth({
-        provider: 'google',
-        options: {
-          redirectTo: window.location.origin
+      const result = await signInWithPopup(firebaseAuth, googleProvider);
+      const user = result.user;
+
+      if (user) {
+        // Check if user profile exists in Firestore
+        const userDocRef = doc(firestoreDb, 'users', user.uid);
+        const userDoc = await getDoc(userDocRef);
+
+        let userData;
+        if (!userDoc.exists()) {
+          // Create new profile for Google user
+          const now = new Date();
+          userData = {
+            id: user.uid,
+            fullName: user.displayName || '',
+            email: user.email || '',
+            role: 'customer',
+            phone: user.phoneNumber || '',
+            createdAt: now
+          };
+          await setDoc(userDocRef, userData);
+        } else {
+          userData = userDoc.data();
         }
-      });
-      if (error) throw error;
+
+        // Save to localStorage for RealtimeContext to pick up
+        localStorage.setItem('bitnexus_user', JSON.stringify({
+          ...userData,
+          full_name: userData.fullName // Map to Supabase field name if needed
+        }));
+
+        setSuccess(true);
+        toast.success('Login successful!', { description: `Welcome, ${user.displayName}` });
+        setTimeout(() => {
+          onClose();
+          window.location.reload();
+        }, 1000);
+      }
     } catch (err: any) {
+      console.error('Google Login Error:', err);
       setError(err.message);
+      toast.error('Google Login failed', { description: err.message });
+    } finally {
       setLoading(false);
     }
   };
@@ -207,9 +244,12 @@ const AuthModal = ({ isOpen, onClose, type }: { isOpen: boolean, onClose: () => 
         email: formData.email,
       });
       if (error) throw error;
-      alert('Verification email resent! Please check your inbox.');
+      toast.success('Verification email resent!', {
+        description: 'Please check your inbox.'
+      });
     } catch (err: any) {
       setError(err.message);
+      toast.error('Failed to resend email', { description: err.message });
     } finally {
       setLoading(false);
     }
@@ -237,10 +277,13 @@ const AuthModal = ({ isOpen, onClose, type }: { isOpen: boolean, onClose: () => 
       }
       if (!res.ok) throw new Error(data.error || 'Reset failed');
 
-      alert('Password reset link sent! Please check your email.');
+      toast.success('Password reset link sent!', {
+        description: 'Please check your email.'
+      });
       onClose();
     } catch (err: any) {
       setError(err.message);
+      toast.error('Reset failed', { description: err.message });
     } finally {
       setLoading(false);
     }

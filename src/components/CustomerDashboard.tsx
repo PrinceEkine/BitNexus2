@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
 import { motion } from 'motion/react';
 import { Ticket as TicketIcon, History, User, FileText, Shield, CreditCard, ExternalLink, Clock, Smartphone, ChevronRight, Plus } from 'lucide-react';
-import { formatCurrency } from '../lib/utils';
+import { formatCurrency, cn } from '../lib/utils';
 import { useRealtime } from '../contexts/RealtimeContext';
 import axios from 'axios';
+import { toast } from 'sonner';
 
 import SubscriptionManagement from './SubscriptionManagement';
 import WarrantyTracking from './WarrantyTracking';
@@ -17,6 +18,7 @@ type CustomerView = 'dashboard' | 'subscription' | 'warranty' | 'smart-home' | '
 const CustomerDashboard = ({ onBookNow }: { onBookNow: () => void }) => {
   const [activeView, setActiveView] = React.useState<CustomerView>('dashboard');
   const { tickets, updateTicket, currentUser, wallet } = useRealtime();
+  const [loading, setLoading] = useState(false);
 
   if (!currentUser) return null;
 
@@ -24,31 +26,38 @@ const CustomerDashboard = ({ onBookNow }: { onBookNow: () => void }) => {
   const pastServices = tickets.filter(t => t.status === 'Completed');
 
   const handleFundWallet = async () => {
-    try {
-      const response = await axios.post('/api/paystack/initialize', {
-        email: currentUser.email,
-        amount: 5000, // Default top up amount
-        metadata: {
-          custom_fields: [
-            {
-              display_name: "User ID",
-              variable_name: "user_id",
-              value: currentUser.id
-            },
-            {
-              display_name: "Payment Type",
-              variable_name: "type",
-              value: 'wallet_topup'
-            }
-          ]
-        }
-      });
-      if (response.data.status) {
-        window.location.href = response.data.data.authorization_url;
+    setLoading(true);
+    const promise = axios.post('/api/paystack/initialize', {
+      email: currentUser.email,
+      amount: 5000, // Default top up amount
+      metadata: {
+        custom_fields: [
+          {
+            display_name: "User ID",
+            variable_name: "user_id",
+            value: currentUser.id
+          },
+          {
+            display_name: "Payment Type",
+            variable_name: "type",
+            value: 'wallet_topup'
+          }
+        ]
       }
-    } catch (error) {
-      console.error("Funding Error:", error);
-    }
+    });
+
+    toast.promise(promise, {
+      loading: 'Preparing secure payment gateway...',
+      success: (res) => {
+        if (res.data.status) {
+          window.location.href = res.data.data.authorization_url;
+          return 'Redirecting to Paystack...';
+        }
+        throw new Error('Could not initialize payment');
+      },
+      error: 'Payment initialization failed. Please try again.',
+      finally: () => setLoading(false)
+    });
   };
 
   if (activeView === 'subscription') {
@@ -68,7 +77,7 @@ const CustomerDashboard = ({ onBookNow }: { onBookNow: () => void }) => {
   }
 
   return (
-    <div className="min-h-screen bg-brand-muted pt-32 pb-24 px-8 md:px-12">
+    <div className="min-h-screen bg-brand-muted pt-20 md:pt-32 pb-24 px-4 md:px-12">
       <div className="max-w-7xl mx-auto">
         {activeTickets.length > 0 && (
           <ChatWidget 
@@ -77,12 +86,12 @@ const CustomerDashboard = ({ onBookNow }: { onBookNow: () => void }) => {
             technicianId={activeTickets[0].technician_id}
           />
         )}
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-end mb-16 gap-8">
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-end mb-12 md:mb-16 gap-8">
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
           >
-            <h1 className="text-5xl font-display italic mb-4">Welcome back, <span className="not-italic">{currentUser.full_name?.split(' ')[0] || 'User'}.</span></h1>
+            <h1 className="text-3xl md:text-5xl font-display italic mb-4">Welcome back, <span className="not-italic">{currentUser.full_name?.split(' ')[0] || 'User'}.</span></h1>
             <button 
               onClick={() => setActiveView('profile')}
               className="data-label text-stone-400 hover:text-brand-accent transition-colors flex items-center gap-2"
@@ -97,7 +106,7 @@ const CustomerDashboard = ({ onBookNow }: { onBookNow: () => void }) => {
           {/* Main Content */}
           <div className="lg:col-span-2 space-y-12">
             {/* Active Tickets - Clean Utility */}
-            <section className="bg-white p-10 border border-stone-200">
+            <section className="bg-white p-6 md:p-10 border border-stone-200">
               <div className="flex items-center justify-between mb-10">
                 <h2 className="data-label">Active Engagements</h2>
                 <div className="w-2 h-2 rounded-full bg-brand-accent animate-pulse" />
@@ -150,7 +159,10 @@ const CustomerDashboard = ({ onBookNow }: { onBookNow: () => void }) => {
                         </div>
                       </div>
                       <div className="mt-8 pt-8 border-t border-stone-100 flex justify-end">
-                        <button className="data-label text-brand-accent hover:underline flex items-center gap-2">
+                        <button 
+                          onClick={() => toast.info('Live tracking initiated', { description: 'Connecting to technician real-time location...' })}
+                          className="data-label text-brand-accent hover:underline flex items-center gap-2"
+                        >
                           Live Tracking <ExternalLink className="w-3 h-3" />
                         </button>
                       </div>
@@ -164,7 +176,7 @@ const CustomerDashboard = ({ onBookNow }: { onBookNow: () => void }) => {
             </section>
 
             {/* Past Services - Technical Grid */}
-            <section className="bg-white p-10 border border-stone-200">
+            <section className="bg-white p-6 md:p-10 border border-stone-200">
               <div className="flex items-center justify-between mb-10">
                 <h2 className="data-label">Service History</h2>
                 <History className="w-4 h-4 text-stone-300" />
@@ -189,12 +201,15 @@ const CustomerDashboard = ({ onBookNow }: { onBookNow: () => void }) => {
                           <p className="font-mono text-[9px] text-stone-400 mt-1">{service.id}</p>
                         </td>
                         <td className="py-8 text-xs font-light italic text-stone-500">{new Date(service.date).toLocaleDateString()}</td>
-                        <td className="py-8 font-mono text-xs">{formatCurrency(25000)}</td>
+                        <td className="py-8 font-mono text-xs">{formatCurrency(service.amount)}</td>
                         <td className="py-8">
                           <span className="text-[9px] font-bold uppercase tracking-widest text-emerald-600">Verified</span>
                         </td>
                         <td className="py-8 text-right">
-                          <button className="p-3 hover:bg-stone-200 transition-colors">
+                          <button 
+                            onClick={() => toast.info('Generating service report...', { description: 'Your PDF will be ready in a moment.' })}
+                            className="p-3 hover:bg-stone-200 transition-colors"
+                          >
                             <FileText className="w-4 h-4 text-stone-400" />
                           </button>
                         </td>
@@ -204,12 +219,68 @@ const CustomerDashboard = ({ onBookNow }: { onBookNow: () => void }) => {
                 </table>
               </div>
             </section>
+
+            {/* Wallet Transactions - Technical Grid */}
+            <section className="bg-white p-6 md:p-10 border border-stone-200">
+              <div className="flex items-center justify-between mb-10">
+                <h2 className="data-label">Financial Registry</h2>
+                <CreditCard className="w-4 h-4 text-stone-300" />
+              </div>
+              
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="border-b border-stone-100">
+                      <th className="pb-6 data-label">Reference</th>
+                      <th className="pb-6 data-label">Date</th>
+                      <th className="pb-6 data-label">Type</th>
+                      <th className="pb-6 data-label">Amount</th>
+                      <th className="pb-6 data-label">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-stone-50">
+                    {useRealtime().transactions.filter(tx => tx.status !== 'failed').slice(0, 5).map((tx) => (
+                      <tr key={tx.id} className="group hover:bg-stone-50 transition-colors">
+                        <td className="py-6">
+                          <p className="font-mono text-[10px] text-stone-500">{tx.reference || tx.id.slice(0, 8)}</p>
+                        </td>
+                        <td className="py-6 text-xs font-light text-stone-400">{new Date(tx.created_at).toLocaleDateString()}</td>
+                        <td className="py-6">
+                          <span className="text-[9px] font-bold uppercase tracking-widest px-2 py-0.5 bg-stone-100 text-stone-600">
+                            {tx.type}
+                          </span>
+                        </td>
+                        <td className={cn(
+                          "py-6 font-mono text-xs",
+                          tx.amount > 0 ? "text-emerald-600" : "text-red-600"
+                        )}>
+                          {tx.amount > 0 ? '+' : ''}{formatCurrency(tx.amount)}
+                        </td>
+                        <td className="py-6">
+                          <span className={cn(
+                            "text-[9px] font-bold uppercase tracking-widest",
+                            tx.status === 'paid' ? "text-emerald-600" : "text-amber-600"
+                          )}>
+                            {tx.status}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                    {useRealtime().transactions.length === 0 && (
+                      <tr>
+                        <td colSpan={5} className="py-12 text-center text-stone-400 italic text-sm">No transactions found.</td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </section>
           </div>
 
           {/* Sidebar */}
           <div className="space-y-12">
             {/* Wallet - Technical Dashboard */}
-            <section className="bg-white p-10 border border-stone-200">
+            <section className="bg-white p-6 md:p-10 border border-stone-200">
               <div className="flex items-center justify-between mb-10">
                 <h2 className="data-label">Nexus Wallet</h2>
                 <CreditCard className="w-4 h-4 text-stone-300" />
@@ -223,9 +294,15 @@ const CustomerDashboard = ({ onBookNow }: { onBookNow: () => void }) => {
               <div className="space-y-4">
                 <button 
                   onClick={handleFundWallet}
-                  className="w-full py-4 bg-brand-dark text-white text-[10px] font-bold uppercase tracking-widest hover:bg-brand-accent transition-all flex items-center justify-center gap-3"
+                  disabled={loading}
+                  className="w-full py-4 bg-brand-dark text-white text-[10px] font-bold uppercase tracking-widest hover:bg-brand-accent transition-all flex items-center justify-center gap-3 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  <Plus className="w-4 h-4" /> Fund Wallet
+                  {loading ? (
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  ) : (
+                    <Plus className="w-4 h-4" />
+                  )}
+                  Fund Wallet
                 </button>
                 <p className="text-[8px] text-stone-400 text-center italic leading-relaxed">
                   Funds are held securely and deducted automatically upon service completion. Withdrawals are currently disabled.
@@ -234,12 +311,12 @@ const CustomerDashboard = ({ onBookNow }: { onBookNow: () => void }) => {
             </section>
 
             {/* Subscription - Dark Luxury */}
-            <section className="bg-brand-dark text-white p-10 border border-stone-800 relative overflow-hidden group">
+            <section className="bg-brand-dark text-white p-6 md:p-10 border border-stone-800 relative overflow-hidden group">
               <div className="absolute -right-4 -bottom-4 w-32 h-32 bg-brand-accent/10 rounded-full blur-3xl group-hover:bg-brand-accent/20 transition-all duration-1000" />
               <h2 className="data-label text-white/40 mb-10">Membership</h2>
               <div className="mb-10">
                 <h3 className="text-3xl font-display italic mb-2">BitNexus <span className="not-italic text-brand-accent">Elite.</span></h3>
-                <p className="text-white/40 font-mono text-[10px]">RENEWAL: 12 NOV 2023</p>
+                <p className="text-white/40 font-mono text-[10px]">RENEWAL: 12 NOV 2026</p>
               </div>
               <ul className="space-y-6 mb-10">
                 {[
@@ -262,7 +339,7 @@ const CustomerDashboard = ({ onBookNow }: { onBookNow: () => void }) => {
             </section>
 
             {/* Quick Actions - Minimal Utility */}
-            <section className="bg-white p-10 border border-stone-200">
+            <section className="bg-white p-6 md:p-10 border border-stone-200">
               <h2 className="data-label mb-10">System Controls</h2>
               <div className="grid grid-cols-1 gap-6">
                 {[
@@ -272,7 +349,13 @@ const CustomerDashboard = ({ onBookNow }: { onBookNow: () => void }) => {
                 ].map((action) => (
                   <button 
                     key={action.id}
-                    onClick={() => action.id !== 'payment' && setActiveView(action.id as CustomerView)}
+                    onClick={() => {
+                      if (action.id === 'payment') {
+                        toast.info('Payment methods management', { description: 'Securely manage your saved cards and accounts.' });
+                      } else {
+                        setActiveView(action.id as CustomerView);
+                      }
+                    }}
                     className="flex items-center gap-6 p-6 border border-stone-50 hover:border-brand-dark transition-all text-left group bg-stone-50/50"
                   >
                     <div className="w-12 h-12 bg-white flex items-center justify-center border border-stone-100 group-hover:bg-brand-dark group-hover:text-white transition-all">

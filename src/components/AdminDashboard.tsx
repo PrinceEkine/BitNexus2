@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
-import { LayoutDashboard, Ticket, Users, Settings, CreditCard, TrendingUp, Map, Star, MoreVertical, Calendar, MessageSquare } from 'lucide-react';
+import { LayoutDashboard, Ticket, Users, Settings, CreditCard, TrendingUp, Map, Star, MoreVertical, Calendar, MessageSquare, Activity, Menu, X, LogOut } from 'lucide-react';
 import { formatCurrency, cn } from '../lib/utils';
 import Logo from './Logo';
 import { useRealtime } from '../contexts/RealtimeContext';
 import { useCurrency } from '../contexts/CurrencyContext';
+import { toast } from 'sonner';
 import TechnicianAvailability from './TechnicianAvailability';
 import TechnicianManagement from './TechnicianManagement';
 import PricingControl from './PricingControl';
@@ -17,20 +18,24 @@ import AIInsights from './AIInsights';
 import AnimatedCheckbox from './AnimatedCheckbox';
 import { PushNotificationManager } from './PushNotificationManager';
 
-type AdminView = 'overview' | 'tickets' | 'technicians' | 'availability' | 'pricing' | 'zones' | 'ticket-details' | 'services' | 'users' | 'financials' | 'ai-insights' | 'chat';
+import OperationalDashboard from './OperationalDashboard';
 
-const AdminDashboard = () => {
+type AdminView = 'overview' | 'tickets' | 'technicians' | 'availability' | 'pricing' | 'zones' | 'ticket-details' | 'services' | 'users' | 'financials' | 'ai-insights' | 'chat' | 'operational';
+
+const AdminDashboard = ({ onLogout }: { onLogout?: () => void }) => {
   const { currency, convert } = useCurrency();
   const [activeView, setActiveView] = useState<AdminView>('overview');
   const [prevView, setPrevView] = useState<AdminView>('overview');
   const [selectedTicketId, setSelectedTicketId] = useState<string | null>(null);
-  const { tickets, technicians, isConnected, updateTicket } = useRealtime();
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const { tickets, technicians, isConnected, updateTicket, currentUser } = useRealtime();
 
   const handleViewChange = (view: AdminView) => {
     if (view !== 'ticket-details') {
       setPrevView(view);
     }
     setActiveView(view);
+    setIsMobileMenuOpen(false);
   };
 
   const stats = [
@@ -51,11 +56,21 @@ const AdminDashboard = () => {
             <header className="flex justify-between items-end">
               <div>
                 <h2 className="text-4xl font-display italic">Operational <span className="not-italic">Overview.</span></h2>
-                <p className="data-label mt-2">Friday, October 24, 2023 • System Status: Optimal</p>
+                <p className="data-label mt-2">{new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })} • System Status: Optimal</p>
               </div>
               <div className="flex gap-4">
-                <button className="btn-outline py-2 px-6">Export Data</button>
-                <button className="btn-primary py-2 px-6">Live Monitor</button>
+                <button 
+                  onClick={() => toast.info('Data export initiated', { description: 'Your report will be ready in a few moments.' })}
+                  className="btn-outline py-2 px-6"
+                >
+                  Export Data
+                </button>
+                <button 
+                  onClick={() => toast.info('Live monitoring active', { description: 'Connecting to real-time field streams...' })}
+                  className="btn-primary py-2 px-6"
+                >
+                  Live Monitor
+                </button>
               </div>
             </header>
 
@@ -187,6 +202,8 @@ const AdminDashboard = () => {
         return <UserManagement />;
       case 'financials':
         return <FinancialDashboard />;
+      case 'operational':
+        return <OperationalDashboard />;
       case 'chat':
         return <AdminChat />;
       case 'ai-insights':
@@ -199,10 +216,24 @@ const AdminDashboard = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 flex">
+    <div className="min-h-screen bg-gray-50 flex flex-col lg:flex-row">
+      {/* Mobile Header */}
+      <div className="lg:hidden bg-brand-dark text-white p-4 flex justify-between items-center sticky top-0 z-50">
+        <div className="flex items-center gap-2">
+          <Logo className="w-6 h-6" variant="light" />
+          <h1 className="text-xl font-display tracking-tighter">BitNexus<span className="text-brand-accent">.</span></h1>
+        </div>
+        <button onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)} className="p-2">
+          {isMobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
+        </button>
+      </div>
+
       {/* Sidebar */}
-      <aside className="w-64 bg-brand-dark text-white flex flex-col sticky top-0 h-screen">
-        <div className="p-8">
+      <aside className={cn(
+        "fixed inset-0 z-40 lg:relative lg:z-auto w-64 bg-brand-dark text-white flex flex-col transition-transform duration-300 lg:translate-x-0",
+        isMobileMenuOpen ? "translate-x-0" : "-translate-x-full"
+      )}>
+        <div className="p-8 hidden lg:block">
           <div className="flex items-center gap-3 mb-2">
             <Logo className="w-8 h-8" variant="light" />
             <h1 className="text-2xl font-display tracking-tighter">BitNexus<span className="text-brand-accent">.</span></h1>
@@ -213,6 +244,7 @@ const AdminDashboard = () => {
         <nav className="flex-1 px-4 space-y-2">
           {[
             { id: 'overview', label: 'Dashboard', icon: LayoutDashboard },
+            { id: 'operational', label: 'Operations', icon: Activity },
             { id: 'tickets', label: 'Tickets', icon: Ticket },
             { id: 'technicians', label: 'Technicians', icon: Users },
             { id: 'users', label: 'User Management', icon: Star },
@@ -241,18 +273,35 @@ const AdminDashboard = () => {
         </div>
 
         <div className="p-8 border-t border-white/5">
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-full bg-brand-accent"></div>
-            <div>
-              <p className="text-[10px] font-bold uppercase tracking-widest">Admin User</p>
-              <p className="text-[8px] text-white/40 uppercase tracking-widest">Super Admin</p>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 rounded-full bg-brand-accent flex items-center justify-center text-[10px] font-bold">
+                {currentUser?.full_name?.charAt(0) || 'A'}
+              </div>
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-widest">{currentUser?.full_name || 'Admin User'}</p>
+                <p className="text-[8px] text-white/40 uppercase tracking-widest">Super Admin</p>
+              </div>
             </div>
+            <button 
+              onClick={() => {
+                if (onLogout) {
+                  onLogout();
+                } else {
+                  toast.success('Logging out of secure session...');
+                  setTimeout(() => window.location.reload(), 1000);
+                }
+              }}
+              className="p-2 text-white/20 hover:text-red-500 transition-colors"
+            >
+              <LogOut className="w-4 h-4" />
+            </button>
           </div>
         </div>
       </aside>
 
       {/* Main Content */}
-      <main className="flex-1 p-12 overflow-y-auto">
+      <main className="flex-1 p-4 md:p-8 lg:p-12 overflow-y-auto">
         {renderActiveView()}
       </main>
     </div>

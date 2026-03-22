@@ -14,6 +14,7 @@ const BookingPage = ({ onBack }: { onBack: () => void }) => {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
+  const [successRef, setSuccessRef] = useState<string | null>(null);
   const [analysisResult, setAnalysisResult] = useState<any>(null);
   const [formData, setFormData] = useState({
     category: '',
@@ -21,6 +22,8 @@ const BookingPage = ({ onBack }: { onBack: () => void }) => {
     date: '',
     time: '',
     address: '',
+    email: currentUser?.email || '',
+    phone: currentUser?.phone || '',
     isLiveVideo: false,
     isEmergency: false,
     amount: 25000
@@ -28,7 +31,7 @@ const BookingPage = ({ onBack }: { onBack: () => void }) => {
 
   const config = {
     reference: (new Date()).getTime().toString(),
-    email: currentUser?.email || "guest@bitnexus.com",
+    email: formData.email || "guest@bitnexus.com",
     amount: formData.amount * 100,
     publicKey: import.meta.env.VITE_PAYSTACK_PUBLIC_KEY || 'pk_test_your_public_key_here',
     metadata: {
@@ -73,7 +76,7 @@ const BookingPage = ({ onBack }: { onBack: () => void }) => {
     switch (step) {
       case 1: return formData.category !== '';
       case 2: return formData.description.length > 10;
-      case 3: return formData.date !== '' && formData.time !== '' && formData.address !== '';
+      case 3: return formData.date !== '' && formData.time !== '' && formData.address !== '' && formData.email !== '' && formData.phone !== '';
       default: return true;
     }
   };
@@ -95,14 +98,18 @@ const BookingPage = ({ onBack }: { onBack: () => void }) => {
       await createTicket({
         service: categories.find(c => c.id === formData.category)?.name || 'General',
         description: formData.description,
+        location: formData.address,
         priority: formData.isEmergency ? 'Emergency' : 'Standard',
         date: `${formData.date}T${formData.time}:00Z`,
         amount: formData.amount,
-        paymentRef: paymentRef
+        paymentRef: paymentRef,
+        customer_email: formData.email,
+        customer_phone: formData.phone
       });
 
+      setSuccessRef(paymentRef || 'Wallet');
       setIsSuccess(true);
-      setTimeout(onBack, 3000);
+      setTimeout(onBack, 5000);
     } catch (error) {
       console.error("Booking Error:", error);
       alert("Failed to create booking. Please try again.");
@@ -125,13 +132,26 @@ const BookingPage = ({ onBack }: { onBack: () => void }) => {
         <motion.div 
           initial={{ opacity: 0, scale: 0.9 }}
           animate={{ opacity: 1, scale: 1 }}
-          className="text-center"
+          className="text-center max-w-md"
         >
           <div className="w-24 h-24 bg-emerald-500 rounded-full flex items-center justify-center mx-auto mb-8 shadow-xl shadow-emerald-500/20">
             <Check className="w-12 h-12 text-white" />
           </div>
           <h2 className="text-5xl font-display italic mb-4">Request <span className="not-italic">Confirmed.</span></h2>
-          <p className="text-stone-400 font-light tracking-widest uppercase text-xs">A specialist is being assigned in real-time.</p>
+          <p className="text-stone-400 font-light tracking-widest uppercase text-xs mb-8">A specialist is being assigned in real-time.</p>
+          
+          <div className="p-6 bg-stone-50 border border-stone-100 space-y-4">
+            <div className="flex justify-between items-center">
+              <span className="text-[10px] uppercase tracking-widest font-bold text-stone-400">Reference</span>
+              <span className="font-mono text-xs">{successRef}</span>
+            </div>
+            <div className="flex justify-between items-center">
+              <span className="text-[10px] uppercase tracking-widest font-bold text-stone-400">Amount Paid</span>
+              <span className="font-mono text-xs">{formatCurrency(convert(formData.amount, 'NGN', currency), currency)}</span>
+            </div>
+          </div>
+          
+          <p className="mt-8 text-[8px] text-stone-400 uppercase tracking-widest italic">Redirecting to your dashboard...</p>
         </motion.div>
       </div>
     );
@@ -248,7 +268,7 @@ const BookingPage = ({ onBack }: { onBack: () => void }) => {
             exit={{ opacity: 0, x: -20 }}
             className="space-y-12"
           >
-            <div className="grid grid-cols-2 gap-8">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
               <div>
                 <label className="block text-[10px] uppercase tracking-widest font-bold text-gray-400 mb-4">Preferred Date</label>
                 <div className="relative">
@@ -275,6 +295,35 @@ const BookingPage = ({ onBack }: { onBack: () => void }) => {
               </div>
             </div>
             
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+              <div>
+                <label className="block text-[10px] uppercase tracking-widest font-bold text-gray-400 mb-4">Email Address</label>
+                <div className="relative">
+                  <span className="absolute left-0 top-4 text-gray-400 text-xs">@</span>
+                  <input 
+                    type="email" 
+                    placeholder="your@email.com"
+                    className="w-full border-b border-gray-100 py-4 pl-8 focus:border-brand-dark outline-none transition-colors font-light"
+                    value={formData.email}
+                    onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="block text-[10px] uppercase tracking-widest font-bold text-gray-400 mb-4">Phone Number</label>
+                <div className="relative">
+                  <Phone className="absolute left-0 top-4 w-4 h-4 text-gray-400" />
+                  <input 
+                    type="tel" 
+                    placeholder="+234 ..."
+                    className="w-full border-b border-gray-100 py-4 pl-8 focus:border-brand-dark outline-none transition-colors font-light"
+                    value={formData.phone}
+                    onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                  />
+                </div>
+              </div>
+            </div>
+
             <div>
               <label className="block text-[10px] uppercase tracking-widest font-bold text-gray-400 mb-4">Service Address</label>
               <div className="relative">
@@ -315,6 +364,15 @@ const BookingPage = ({ onBack }: { onBack: () => void }) => {
                 <button onClick={() => setStep(3)} className="text-[10px] uppercase tracking-widest font-bold text-brand-accent hover:underline">Change</button>
               </div>
 
+              <div className="flex justify-between items-start border-b border-gray-200 pb-6">
+                <div>
+                  <h4 className="text-[10px] uppercase tracking-widest font-bold text-gray-400 mb-2">Contact</h4>
+                  <p className="text-sm font-light">{formData.email}</p>
+                  <p className="text-xs text-stone-400">{formData.phone}</p>
+                </div>
+                <button onClick={() => setStep(3)} className="text-[10px] uppercase tracking-widest font-bold text-brand-accent hover:underline">Change</button>
+              </div>
+
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
@@ -347,6 +405,24 @@ const BookingPage = ({ onBack }: { onBack: () => void }) => {
                   <Shield className="w-5 h-5 text-white/20 ml-auto" />
                 </div>
               </div>
+
+              {wallet && (
+                <div className={cn(
+                  "p-6 border transition-all",
+                  wallet.balance >= formData.amount ? "border-emerald-100 bg-emerald-50/30" : "border-amber-100 bg-amber-50/30"
+                )}>
+                  <div className="flex justify-between items-center">
+                    <div className="flex items-center gap-3">
+                      <CreditCard className={cn("w-4 h-4", wallet.balance >= formData.amount ? "text-emerald-600" : "text-amber-600")} />
+                      <span className="text-[10px] uppercase tracking-widest font-bold">Nexus Wallet Balance</span>
+                    </div>
+                    <span className="font-mono text-xs">{formatCurrency(convert(wallet.balance, 'NGN', currency), currency)}</span>
+                  </div>
+                  {wallet.balance < formData.amount && (
+                    <p className="text-[8px] text-amber-600 uppercase tracking-widest mt-2">Insufficient funds. Paystack will be used for checkout.</p>
+                  )}
+                </div>
+              )}
             </div>
 
             <div className="flex items-center gap-4 p-6 bg-emerald-50 text-emerald-700">
@@ -361,10 +437,10 @@ const BookingPage = ({ onBack }: { onBack: () => void }) => {
   };
 
   return (
-    <div className="min-h-screen bg-white pt-40 pb-32 px-8 md:px-12">
+    <div className="min-h-screen bg-white pt-24 md:pt-40 pb-32 px-4 md:px-12">
       <div className="max-w-4xl mx-auto">
         {/* Header */}
-        <div className="flex justify-between items-center mb-24">
+        <div className="flex justify-between items-center mb-12 md:mb-24">
           <button 
             onClick={step === 1 ? onBack : prevStep}
             className="group flex items-center data-label hover:text-brand-accent transition-colors"
@@ -387,12 +463,12 @@ const BookingPage = ({ onBack }: { onBack: () => void }) => {
         </div>
 
         {/* Content */}
-        <div className="mb-20">
+        <div className="mb-12 md:mb-20">
           <motion.h1 
             key={step}
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            className="text-6xl md:text-8xl font-display mb-6 italic leading-tight"
+            className="text-4xl md:text-8xl font-display mb-6 italic leading-tight"
           >
             {step === 1 && "What do you need?"}
             {step === 2 && "Tell us more."}
